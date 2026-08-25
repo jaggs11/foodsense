@@ -34,7 +34,7 @@ from foodsense.schemas import Goal, Meal, MealItem, NutrientVector
 
 __all__ = [
     "ADDED_SUGAR_PROXY_CATEGORIES",
-    "ADDED_SUGAR_PROXY_TAG",
+    "ADDED_SUGAR_PROXY_TAGS",
     "DEFAULT_GI",
     "GI_BY_CATEGORY",
     "GoalConfig",
@@ -274,17 +274,35 @@ GI_BY_CATEGORY: dict[str, float] = {
 }
 DEFAULT_GI = 50.0
 
-#: Categories whose sugars are treated as *added* sugars.
-#:
-#: USDA reports no added-sugar values in either release we consume (see
-#: data/README.md), so the rule would otherwise be unenforceable. This proxy is
-#: deliberately conservative in the protective direction: in these categories the
-#: sugar is overwhelmingly added rather than intrinsic. Fruit and dairy are
-#: excluded precisely because their sugar is intrinsic.
+# ---------------------------------------------------------------------------
+# The added-sugar proxy
+# ---------------------------------------------------------------------------
+#
+# DOCUMENTED PROXY -- NOT A MEASURED VALUE.
+#
+# Neither USDA release FoodSense consumes (SR Legacy 2018, Foundation Foods
+# 2025-04) reports FDC nutrient 1235, "Added Sugars". `added_sugars_g` is
+# therefore 0.0 for every food in the curated database, and the added-sugar
+# rules -- the AAP's "no added sugars below 24 months" and the DGA's daily
+# ceiling -- would be unenforceable if taken literally.
+#
+# So in the categories below, and in sweetened beverages, a food's *total*
+# sugars are counted as added sugars. In those categories the sugar is
+# overwhelmingly added rather than intrinsic, which makes the substitution
+# conservative in the protective direction. Fruit and dairy are deliberately
+# excluded: their sugar is intrinsic, and counting it would penalise exactly the
+# foods a toddler should be eating.
+#
+# Where a food does carry a measured added-sugar value, that value is used and
+# the proxy is not applied. See data/README.md and docs/architecture.md.
+
+#: Categories whose total sugars stand in for added sugars.
 ADDED_SUGAR_PROXY_CATEGORIES = frozenset({"sweets", "snack", "baked", "cereal"})
 
-#: Foods anywhere in the database carrying this tag are treated the same way.
-ADDED_SUGAR_PROXY_TAG = "added_sugar_source"
+#: Foods anywhere in the database carrying one of these tags are treated the same
+#: way. ``sweetened_beverage`` is category-scoped at build time, so a diet cola
+#: and an unsweetened almond milk do not carry it.
+ADDED_SUGAR_PROXY_TAGS = frozenset({"added_sugar_source", "sweetened_beverage"})
 
 #: kcal per gram, for energy shares.
 _ATWATER = {"protein_g": 4.0, "carbohydrate_g": 4.0, "fat_g": 9.0}
@@ -325,8 +343,8 @@ def estimate_added_sugars(items: Meal | list[MealItem], db: FoodDB) -> float:
         nutrients = record.nutrients_for(item.quantity_g)
         if nutrients.added_sugars_g > 0:
             total += nutrients.added_sugars_g
-        elif (
-            record.category in ADDED_SUGAR_PROXY_CATEGORIES or ADDED_SUGAR_PROXY_TAG in record.tags
+        elif record.category in ADDED_SUGAR_PROXY_CATEGORIES or bool(
+            ADDED_SUGAR_PROXY_TAGS & record.tags
         ):
             total += nutrients.sugars_g
     return total

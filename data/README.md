@@ -67,14 +67,20 @@ Each row carries 33 nutrients per 100 g plus four columns the constraint layer n
 - **`tags`** — medication and diet interaction markers: high_sodium 640,
   high_potassium 505, high_tyramine 99, low_sodium_variant 86, leafy_green_vitk 83,
   added_sugar_source 63, cured_meat 57, alcohol 36, aged_cheese 35, whole_nut 35,
-  raw_hard_veg 23, nut_butter 22, caffeine 20, grapefruit 18, honey 9.
+  sweetened_beverage 23, raw_hard_veg 23, nut_butter 22, caffeine 20,
+  grapefruit 18, honey 9.
 
 ### Known data limitations
 
 - **`added_sugars_g` is 0.0 for every food.** Neither SR Legacy (2018) nor Foundation
   (2025-04) reports FDC nutrient 1235. The column is stored as `0.0` and **not**
-  estimated. The toddler added-sugar rule therefore cannot use it directly; Phase 2
-  documents the proxy it uses instead.
+  estimated. The added-sugar rules are therefore evaluated against a **documented
+  proxy**: in the `sweets`, `snack`, `baked` and `cereal` categories, and in foods
+  tagged `sweetened_beverage`, total sugars stand in for added sugars. Fruit and dairy
+  are excluded because their sugar is intrinsic. The `sweetened_beverage` tag matters
+  here: only 4 of 110 curated beverages carried the generic `added_sugar_source`
+  keyword, so colas and lemonades were invisible to the rule until it was added. See
+  `docs/architecture.md` for the full argument.
 - Nutrient coverage varies by nutrient: energy 99.6%, protein 95.1%, sodium 94.4%,
   potassium 96.8%, calcium 96.4%, carbohydrate 83.1%, sugars 56.6%, fibre 59.0%,
   vitamin D 16.6%. A 0% share for cholesterol in plant foods is a *true zero*, not a gap

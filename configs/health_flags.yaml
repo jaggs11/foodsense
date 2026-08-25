@@ -105,5 +105,11 @@ rules:
     label: "No added sugar"
     severity: hard
     per_meal_max:
+      # EVALUATED AGAINST A DOCUMENTED PROXY, NOT A MEASURED VALUE. USDA reports
+      # no added-sugar values in the releases FoodSense consumes, so total sugars
+      # stand in for added sugars in the sweets, snack, baked and cereal
+      # categories and in sweetened beverages; fruit and dairy are excluded
+      # because their sugar is intrinsic. See constraints/goals.py and
+      # docs/architecture.md.
       added_sugars_g: 0.5
     message: "No added sugar is permitted for this profile."

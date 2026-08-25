@@ -17,9 +17,10 @@ which pairs a postprandial-glucose predictor with a counterfactual optimiser and
 translation layer, along five axes: availability-awareness, modification-based editing,
 post-generation verification, generalised health goals, and age/life-stage personalisation.
 
-> **Status:** Phase 0 (scaffold) complete. Stages 1–4 land in phases 1–6; see
-> [Roadmap](#roadmap). No evaluation numbers appear in this README until the experiments
-> in `experiments/` have actually been run — see `results/`.
+> **Status:** Phases 0–2 complete — data layer, constraint engine and the Stage-1
+> suitability surrogate are built and tested. Stages 2–4 land in phases 3–6; see
+> [Roadmap](#roadmap). No evaluation number appears in this repository until the
+> script that produces it has actually been run — see `results/`.
 
 ---
 
@@ -177,7 +178,7 @@ Regeneration instructions: [`docs/evaluation.md`](docs/evaluation.md).
 |----------|---------------|
 | `results/cf_comparison.md` | FoodSense-DE vs Wachter-style vs DiCE (random/genetic) vs greedy — validity, L1/L2 distance, sparsity, **availability-violation %**, **safety-violation %**, runtime, split by age group |
 | `results/verification_eval.md` | Rate of hallucinated quantities / unsafe items in Stage-3 output, before vs after Stage 4 |
-| `results/dataset_comparison.md` | Stage-1 metrics on Food.com vs Nutrition5k |
+| `results/dataset_comparison.md` | **Available now.** Corpus reconstruction fidelity and Stage-1 metrics on Food.com vs Nutrition5k |
 | `results/llm_benchmark.md` | Macro RMSE, goal consistency and diversity across providers (skipped gracefully with no keys) |
 
 ---
@@ -207,8 +208,8 @@ docs/                      # architecture, evaluation, traceability, demo script
 ## Roadmap
 
 - [x] **Phase 0** — scaffold, tooling, CI, schemas
-- [ ] **Phase 1** — data layer (curated USDA DB, Food.com + Nutrition5k loaders)
-- [ ] **Phase 2** — `RuleEngine`, guideline configs, Stage-1 surrogate
+- [x] **Phase 1** — data layer (curated USDA DB, Food.com + Nutrition5k loaders)
+- [x] **Phase 2** — `RuleEngine`, guideline configs, Stage-1 surrogate
 - [ ] **Phase 3** — Stage-2 optimiser + DiCE/Wachter/greedy baselines
 - [ ] **Phase 4** — Stage-3 RAG + Stage-4 verifier + end-to-end pipeline
 - [ ] **Phase 5** — FastAPI + React UI + Docker

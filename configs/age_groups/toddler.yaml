@@ -57,10 +57,17 @@ daily:
   fiber_g: {min: 19, weight: 0.8}
   # NASEM DRI, CDRR 1200 mg/d. Toddler foods are frequently over this.
   sodium_mg: {max: 1200, weight: 1.5}
-  # DGA: added sugars <10% of energy; AAP: avoid entirely below 2 years.
-  # See `strict_no_added_sugar_below_months` below and note the data limitation
-  # in data/README.md -- USDA does not report added sugars, so this rule is
-  # evaluated against a documented proxy.
+  # DGA: added sugars <10% of energy; AAP: avoid entirely below 2 years. See
+  # `strict_no_added_sugar_below_months` below.
+  #
+  # EVALUATED AGAINST A DOCUMENTED PROXY, NOT A MEASURED VALUE. Neither USDA
+  # release FoodSense consumes reports FDC nutrient 1235 ("Added Sugars"), so
+  # every food in the curated database has added_sugars_g = 0.0 and this rule
+  # would otherwise never fire. In the sweets, snack, baked and cereal
+  # categories, and in sweetened beverages, a food's TOTAL sugars are counted as
+  # added sugars instead; fruit and dairy are excluded because their sugar is
+  # intrinsic. Conservative in the protective direction. Defined in
+  # constraints/goals.py, explained in docs/architecture.md and data/README.md.
   added_sugars_g: {max: 25, weight: 1.0}
   # NASEM DRI, AMDR for 1-3 y is 30-40% of energy from fat -- toddlers need more
   # fat than adults, so this is a floor as much as a ceiling.
@@ -95,39 +102,39 @@ choking_bans:
   # substituted -- which is what the toddler demo scenario turns on.
   - hazard_class: nut
     banned_forms: [whole]
-    safe_form: ground
+    safe_forms: [ground, thin_spread]
     safe_form_min_age_months: 24
     message: "Whole nuts are a choking hazard under 4 years."
 
   - hazard_class: seed
     banned_forms: [whole]
-    safe_form: ground
+    safe_forms: [ground]
     safe_form_min_age_months: 24
     message: "Whole seeds are a choking hazard under 4 years."
 
   - hazard_class: nut_butter
     banned_forms: [spoonful]
-    safe_form: thin_spread
+    safe_forms: [thin_spread]
     message: "Nut butter by the spoonful can block the airway; spread it thinly."
 
   - hazard_class: hard_raw_vegetable
     banned_forms: [whole, chopped, sliced]
-    safe_form: soft_cooked
+    safe_forms: [soft_cooked, mashed]
     message: "Hard raw vegetables must be cooked soft for a toddler."
 
   - hazard_class: hot_dog
     banned_forms: [whole, sliced_rounds]
-    safe_form: minced
+    safe_forms: [minced]
     message: >-
       Hot dogs cut into rounds are the archetypal airway plug; mince them or cut
       them lengthwise into thin strips.
 
   # Chunks of meat are named as a choking hazard by the AAP alongside the items
-  # above. Enabled by default; set `enabled: false` to fall back to the narrower
-  # ban list in the design brief, which omits it.
+  # above, and its nearest-safe-form map gives them as "minced or ground".
+  # Set `enabled: false` to fall back to a ban list without them.
   - hazard_class: meat_chunk
     banned_forms: [whole, sliced, chopped]
-    safe_form: minced
+    safe_forms: [minced, ground]
     enabled: true
     message: "Chunks of meat are a choking hazard; mince or grind them."
 

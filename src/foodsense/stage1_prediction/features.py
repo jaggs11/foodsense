@@ -23,7 +23,7 @@ import numpy as np
 
 from foodsense.constraints.goals import (
     ADDED_SUGAR_PROXY_CATEGORIES,
-    ADDED_SUGAR_PROXY_TAG,
+    ADDED_SUGAR_PROXY_TAGS,
     DEFAULT_GI,
     GI_BY_CATEGORY,
 )
@@ -114,8 +114,8 @@ def meal_features(meal: Meal | list[MealItem], profile: UserProfile, db: FoodDB)
         glycemic_load += GI_BY_CATEGORY.get(record.category, DEFAULT_GI) * available_carb / 100.0
         if per_100g.added_sugars_g > 0:
             added_sugars += per_100g.added_sugars_g * factor
-        elif (
-            record.category in ADDED_SUGAR_PROXY_CATEGORIES or ADDED_SUGAR_PROXY_TAG in record.tags
+        elif record.category in ADDED_SUGAR_PROXY_CATEGORIES or bool(
+            ADDED_SUGAR_PROXY_TAGS & record.tags
         ):
             added_sugars += per_100g.sugars_g * factor
 

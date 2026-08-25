@@ -77,6 +77,43 @@ Medication and condition rules live in `configs/health_flags.yaml` rather than i
 each age group, because they are age-independent: a 40-year-old on warfarin needs the
 same vitamin-K consistency as an 80-year-old.
 
+### The added-sugar proxy — a documented substitution, not a measurement
+
+One rule in the system is not evaluated against measured data, and it is worth being
+explicit about which one and why.
+
+Neither USDA release FoodSense consumes — SR Legacy (2018) or Foundation Foods
+(2025-04) — reports FDC nutrient 1235, "Added Sugars". Every food in the curated
+database therefore carries `added_sugars_g = 0.0`. Taken literally, the AAP's "no
+added sugars below 24 months" and the DGA's daily ceiling could never fire: a toddler
+could be served a 330 ml cola and the rule would report full compliance.
+
+Rather than drop the rule, FoodSense substitutes a **documented proxy**: in the
+`sweets`, `snack`, `baked` and `cereal` categories, and in any food tagged
+`sweetened_beverage`, a food's *total* sugars are counted as added sugars. Where a
+food does carry a measured added-sugar value, that value is used and the proxy is not
+applied.
+
+Three properties make the substitution defensible:
+
+- **It is conservative in the protective direction.** In those categories sugar is
+  overwhelmingly added rather than intrinsic, so the proxy can overstate added sugar
+  but rarely understates it. For a safety rule aimed at toddlers, erring toward
+  restriction is the correct direction to err in.
+- **Fruit and dairy are deliberately excluded.** Their sugar is intrinsic, and
+  counting it would penalise exactly the foods a toddler should be eating. 100 g of
+  grapes and 200 g of whole milk both score 0.0 g of added sugar; 330 ml of regular
+  cola scores 32.8 g, above the entire 25 g/day toddler ceiling.
+- **`sweetened_beverage` is category-scoped and negation-aware**, assigned at
+  database-build time. Diet colas and unsweetened almond milk do not carry it. Adding
+  the tag mattered: only 4 of 110 curated beverages carried the generic
+  `added_sugar_source` keyword tag, so sodas and lemonades were invisible to the rule.
+
+The proxy is labelled as such in `configs/age_groups/toddler.yaml`,
+`configs/age_groups/adult.yaml`, `configs/health_flags.yaml`, `constraints/goals.py`
+and `data/README.md`. It is the one place where a threshold is compared against an
+estimate rather than a measurement, and nothing else in the system does this.
+
 ### Calibrating a per-meal target
 
 Daily reference intakes have to become per-meal ones, and floors and ceilings do not

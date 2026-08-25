@@ -553,3 +553,74 @@ class TestRuleEngine:
             for goal in Goal
         }
         assert len({round(s, 4) for s in scores.values()}) > 1
+
+
+class TestArchitectDirectives:
+    """Rules the architect specified explicitly; pinned so they cannot regress."""
+
+    def test_meat_chunks_are_banned_for_toddlers(self, db):
+        """Approved addition: the AAP names chunks of meat alongside the other hazards."""
+        ban = next(
+            b
+            for b in load_age_config(AgeGroup.TODDLER).active_bans()
+            if b.hazard_class == "meat_chunk"
+        )
+        assert ban.enabled
+        assert {Form.WHOLE, Form.SLICED, Form.CHOPPED} <= set(ban.banned_forms)
+
+    @pytest.mark.parametrize("form", [Form.WHOLE, Form.SLICED, Form.CHOPPED])
+    def test_meat_chunk_repair_is_minced_or_ground(self, db, form):
+        record = next(r for r in db.by_hazard("meat_chunk") if r.permits(form))
+        violation = check_choking(Meal(items=[record.as_item(90.0, form)]), _toddler(), db)[0]
+        assert violation.rule_id == "toddler.choking.meat_chunk"
+        assert violation.suggested_form in (Form.MINCED, Form.GROUND)
+
+    def test_ground_meat_is_not_a_hazard(self, db):
+        """The repair has to actually be safe, or the map is incoherent."""
+        record = next(r for r in db.by_hazard("meat_chunk") if r.permits(Form.MINCED))
+        assert check_choking(Meal(items=[record.as_item(90.0, Form.MINCED)]), _toddler(), db) == []
+
+    def test_safe_forms_are_tried_in_preference_order(self, db):
+        """`safe_forms: [minced, ground]` must prefer minced where both are possible."""
+        ban = next(
+            b
+            for b in load_age_config(AgeGroup.TODDLER).active_bans()
+            if b.hazard_class == "meat_chunk"
+        )
+        assert ban.safe_forms[:2] == (Form.MINCED, Form.GROUND)
+        assert ban.repair_for((Form.GROUND, Form.MINCED), 18) is Form.MINCED
+        assert ban.repair_for((Form.GROUND,), 18) is Form.GROUND
+        assert ban.repair_for((Form.WHOLE,), 18) is None
+
+    def test_nut_safe_forms_offer_ground_then_thin_spread(self, db):
+        ban = next(
+            b for b in load_age_config(AgeGroup.TODDLER).active_bans() if b.hazard_class == "nut"
+        )
+        assert ban.safe_forms == (Form.GROUND, Form.THIN_SPREAD)
+        assert ban.repair_for((Form.GROUND, Form.THIN_SPREAD), 30) is Form.GROUND
+        assert ban.repair_for((Form.GROUND, Form.THIN_SPREAD), 18) is None
+
+    def test_sweetened_beverages_count_toward_added_sugar(self, db):
+        """Only 4 of 110 beverages carried the generic tag; sodas were invisible."""
+        cola = next(r for r in db.by_tag("sweetened_beverage") if "cola, regular" in r.name.lower())
+        assert estimate_added_sugars([cola.as_item(330.0)], db) > 25.0
+
+    def test_the_proxy_spares_intrinsic_sugar(self, db):
+        """Fruit and dairy sugar is intrinsic; counting it would penalise good foods."""
+        grapes = db.by_hazard("grape")[0]
+        milk = db.search("milk whole", limit=1)[0][0]
+        assert estimate_added_sugars([grapes.as_item(100.0)], db) == pytest.approx(0.0)
+        assert estimate_added_sugars([milk.as_item(200.0)], db) == pytest.approx(0.0)
+
+    def test_diet_and_unsweetened_drinks_are_not_tagged(self, db):
+        for record in db.by_tag("sweetened_beverage"):
+            lowered = record.name.lower()
+            assert not any(
+                word in lowered for word in ("unsweetened", "sugar-free", "diet", "low calorie")
+            ), record.name
+
+    def test_a_cola_breaches_the_toddler_added_sugar_rule(self, engine, db):
+        """End to end: the rule the proxy exists to make enforceable actually fires."""
+        cola = next(r for r in db.by_tag("sweetened_beverage") if "cola, regular" in r.name.lower())
+        evaluation = engine.evaluate(Meal(items=[cola.as_item(330.0), _staple(db)]), _toddler(30))
+        assert any(v.rule_id == "age.toddler.added_sugars_g" for v in evaluation.violations)

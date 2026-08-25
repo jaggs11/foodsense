@@ -51,8 +51,13 @@ daily:
   iron_mg: {min: 18, weight: 0.6}
   # DGA: saturated fat under 10% of energy.
   saturated_fat_g: {max: 22, weight: 0.9}
-  # DGA: added sugars under 10% of energy. See the data limitation note in
-  # data/README.md -- evaluated against a documented proxy.
+  # DGA: added sugars under 10% of energy.
+  #
+  # EVALUATED AGAINST A DOCUMENTED PROXY, NOT A MEASURED VALUE -- USDA reports no
+  # added-sugar values in either release we consume, so total sugars stand in for
+  # added sugars in the sweets, snack, baked and cereal categories and in
+  # sweetened beverages. Fruit and dairy are excluded: their sugar is intrinsic.
+  # See constraints/goals.py, docs/architecture.md and data/README.md.
   added_sugars_g: {max: 50, weight: 0.8}
   # NASEM DRI, AI 4700 mg/d; commonly under-consumed.
   potassium_mg: {min: 3400, weight: 0.6}

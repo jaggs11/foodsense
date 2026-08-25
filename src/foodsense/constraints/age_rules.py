@@ -61,7 +61,12 @@ class ChokingBan:
 
     hazard_class: str
     banned_forms: frozenset[Form] | None  # None == every form
-    safe_form: Form | None
+    #: Repairs in preference order. Empty means no preparation makes this food
+    #: safe, so the only fix is removal or substitution. An ordered list rather
+    #: than a single value because the AAP's map genuinely offers alternatives --
+    #: meat is "minced or ground", nuts are "ground or thinly spread" -- and which
+    #: one applies depends on what the specific food can physically take.
+    safe_forms: tuple[Form, ...]
     message: str
     safe_form_min_age_months: int | None = None
     enabled: bool = True
@@ -73,24 +78,26 @@ class ChokingBan:
     def bans(self, form: Form) -> bool:
         return self.banned_forms is None or form in self.banned_forms
 
-    def safe_form_for(self, age_months: int | None) -> Form | None:
-        """The form this hazard can be repaired to, if any, at this age.
+    def safe_forms_for(self, age_months: int | None) -> tuple[Form, ...]:
+        """The forms this hazard can be repaired to, in preference order, at this age.
 
         A ban may carry ``safe_form_min_age_months``: below that age there is no
         safe preparation and the only repair is removal or substitution. Whole
         nuts are the case that matters -- grinding is an acceptable answer for a
         three-year-old and not for an eighteen-month-old.
         """
-        if self.safe_form is None:
-            return None
-        if self.safe_form_min_age_months is None:
-            return self.safe_form
+        if not self.safe_forms or self.safe_form_min_age_months is None:
+            return self.safe_forms if self.safe_form_min_age_months is None else ()
         if age_months is None:
             # Unknown age inside a life stage with an age-gated rule: assume the
             # youngest, because the failure mode of guessing wrong is a choking
             # hazard rather than an inconvenience.
-            return None
-        return self.safe_form if age_months >= self.safe_form_min_age_months else None
+            return ()
+        return self.safe_forms if age_months >= self.safe_form_min_age_months else ()
+
+    def repair_for(self, allowed_forms: tuple[Form, ...], age_months: int | None) -> Form | None:
+        """First safe form this particular food can actually take, or ``None``."""
+        return next((f for f in self.safe_forms_for(age_months) if f in allowed_forms), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,12 +248,20 @@ def load_age_config(age_group: AgeGroup) -> AgeConfig:
 
     bans = []
     for entry in raw.get("choking_bans") or []:
-        safe_form = entry.get("safe_form")
+        # Accepts `safe_forms: [minced, ground]`, or a scalar `safe_form: minced`,
+        # or an explicit null meaning no preparation makes this food safe.
+        raw_safe = entry.get("safe_forms", entry.get("safe_form"))
+        if raw_safe is None:
+            safe_forms: tuple[Form, ...] = ()
+        elif isinstance(raw_safe, str):
+            safe_forms = (Form(raw_safe),)
+        else:
+            safe_forms = tuple(Form(f) for f in raw_safe)
         bans.append(
             ChokingBan(
                 hazard_class=entry["hazard_class"],
                 banned_forms=_parse_forms(entry.get("banned_forms")),
-                safe_form=Form(safe_form) if safe_form else None,
+                safe_forms=safe_forms,
                 message=(entry.get("message") or "").strip(),
                 safe_form_min_age_months=entry.get("safe_form_min_age_months"),
                 enabled=bool(entry.get("enabled", True)),
@@ -336,10 +351,8 @@ def check_choking(
         ban = by_hazard.get(record.hazard_class)
         if ban is None or not ban.bans(item.form):
             continue
-        safe_form = ban.safe_form_for(profile.age_months)
         # A repair is only real if the food can physically take that form.
-        if safe_form is not None and not record.permits(safe_form):
-            safe_form = None
+        safe_form = ban.repair_for(record.allowed_forms, profile.age_months)
         violations.append(
             StructuralViolation(
                 rule_id=ban.rule_id,
@@ -458,8 +471,8 @@ def nearest_safe_form(item: MealItem, profile: UserProfile, db: FoodDB) -> Form 
     ban = bans.get(record.hazard_class)
 
     if ban is not None:
-        preferred = ban.safe_form_for(profile.age_months)
-        if preferred is not None and preferred in candidates:
+        preferred = ban.repair_for(tuple(candidates), profile.age_months)
+        if preferred is not None:
             return preferred
         candidates = [f for f in candidates if not ban.bans(f)]
 

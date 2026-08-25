@@ -337,6 +337,19 @@ TAG_PATTERNS: dict[str, str] = {
     "added_sugar_source": r"\b(candies|syrup|sweetened|frosting|sugars, granulated)\b",
 }
 
+#: Sweetened drinks, tagged only within the beverage category. They are a major
+#: source of added sugar and the keyword list above misses almost all of them:
+#: only 4 of 110 curated beverages carried ``added_sugar_source``, so colas,
+#: sodas and lemonades were invisible to the added-sugar rule.
+SWEETENED_BEVERAGE_RE = (
+    r"\b(cola|soda|soft drink|lemonade|punch|energy drink|sport drink|"
+    r"fruit drink|nectar|sweetened|malted|milkshake|shake|smoothie|"
+    r"chocolate[- ]flavored|horchata|eggnog)\b"
+)
+
+#: ...but not when the name says otherwise. A diet cola is not a sugar source.
+UNSWEETENED_RE = r"\b(unsweetened|sugar[- ]free|diet|low calorie|no sugar|zero)\b"
+
 #: Nutrient-threshold tags, per 100 g. Values chosen to match the rules that
 #: consume them: the warfarin rule caps vitamin K per meal, so a food only needs
 #: the ``leafy_green_vitk`` tag if a normal portion could move that cap.
@@ -580,6 +593,13 @@ def _assign_tags(description: str, category: str, hazard: str, row: pd.Series) -
         value = row.get(nutrient)
         if pd.notna(value) and float(value) >= threshold:
             tags.append(tag)
+    if (
+        category == "beverage"
+        and re.search(SWEETENED_BEVERAGE_RE, description, flags=re.IGNORECASE)
+        and not re.search(UNSWEETENED_RE, description, flags=re.IGNORECASE)
+    ):
+        tags.append("sweetened_beverage")
+
     # Hazard-derived tags named explicitly in the design brief.
     if hazard == "nut":
         tags.append("whole_nut")
