@@ -1,0 +1,54 @@
+# --- secrets ---
+.env
+*.pem
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# --- data ---
+# Full dataset downloads land here and are NEVER committed.
+data/raw/*
+data/interim/
+# Committed artefacts live in data/processed/ and data/samples/ (see data/README.md).
+# Large parquet/sqlite spills are not.
+*.parquet.big
+data/processed/*.tmp
+
+# --- generated / scratch ---
+results/tmp/
+models/*.tmp
+*.log
+
+# --- node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-error.log*
+
+# --- local tooling ---
+.claude/settings.local.json
+
+# --- os / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# keep data/raw/ present on clone even though its contents are ignored
+!data/raw/.gitkeep

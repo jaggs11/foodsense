@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "foodsense"
+version = "0.1.0"
+description = "Availability-Aware, Verification-Guided Counterfactual Food Recommendation System"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["counterfactual", "nutrition", "recommendation", "usda", "rag"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+]
+
+dependencies = [
+    # core data / typing
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "pyarrow>=15.0",
+    "scipy>=1.11",
+    # stage 1
+    "scikit-learn>=1.4",
+    "lightgbm>=4.3",
+    "xgboost>=2.0",
+    # stage 3 / stage 4
+    "rapidfuzz>=3.6",
+    "rank-bm25>=0.2.2",
+    # api
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    # cli / io
+    "typer>=0.12",
+    "rich>=13.7",
+    "requests>=2.31",
+    "tqdm>=4.66",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+eval = [
+    "dice-ml>=0.11",
+    "matplotlib>=3.8",
+]
+llm = [
+    "anthropic>=0.34",
+    "openai>=1.30",
+]
+data = [
+    "kagglehub>=0.3",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "httpx2>=0.1",  # required by starlette.testclient
+]
+
+[project.scripts]
+foodsense = "foodsense.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/aarush093/foodsense"
+Repository = "https://github.com/aarush093/foodsense"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+foodsense = ["py.typed"]
+
+# ----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "api", "experiments"]
+exclude = [".venv", "data", "frontend", "models", "results"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # typer uses function calls in argument defaults
+    "RUF012", # mutable class attrs without ClassVar (pydantic models)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# Makes the repo root importable so tests can `from api.main import app`
+# (the `api` package is intentionally not installed into site-packages).
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: long-running tests (optimizer sweeps, full training); excluded in CI",
+    "needs_data: requires the built food database in data/processed/",
+    "needs_model: requires trained Stage-1 models in models/",
+    "needs_llm: requires an LLM provider API key; skipped otherwise",
+]
+filterwarnings = ["ignore::DeprecationWarning"]

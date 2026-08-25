@@ -1,0 +1,42 @@
+# FoodSense — pinned-floor requirements for pip users.
+# Kept in sync with [project.dependencies] + [eval] + [dev] in pyproject.toml.
+# Everything here is needed to run the FULL offline pipeline, tests and
+# experiments. Optional LLM providers live in requirements-optional.txt.
+
+# --- core data / typing ---
+pydantic>=2.6
+pyyaml>=6.0
+numpy>=1.26
+pandas>=2.1
+pyarrow>=15.0
+scipy>=1.11
+
+# --- stage 1: suitability surrogate ---
+scikit-learn>=1.4
+lightgbm>=4.3
+xgboost>=2.0
+
+# --- stage 3 retrieval / stage 4 verification ---
+rapidfuzz>=3.6
+rank-bm25>=0.2.2
+
+# --- api ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# --- cli / io ---
+typer>=0.12
+rich>=13.7
+requests>=2.31
+tqdm>=4.66
+python-dotenv>=1.0
+
+# --- experiments / baselines ---
+dice-ml>=0.11
+matplotlib>=3.8
+
+# --- dev ---
+pytest>=8.0
+pytest-cov>=5.0
+ruff>=0.5
+httpx2>=0.1          # required by starlette.testclient

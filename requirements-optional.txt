@@ -1,0 +1,10 @@
+# FoodSense — OPTIONAL extras. None of these are required for the offline demo.
+#
+#   pip install -r requirements-optional.txt
+
+# Stage-3 LLM enhancement layer (needs API keys in .env)
+anthropic>=0.34
+openai>=1.30
+
+# Full Food.com corpus download (needs Kaggle credentials)
+kagglehub>=0.3

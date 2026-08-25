@@ -1,0 +1,22 @@
+# Normalise line endings so the repo behaves identically on Windows, Linux and in
+# Docker. Without this, a Makefile or shell script checked out with CRLF breaks
+# inside the Linux container.
+* text=auto eol=lf
+
+# Files that MUST stay LF regardless of platform.
+Makefile        text eol=lf
+Dockerfile      text eol=lf
+*.sh            text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# Windows-native script.
+*.ps1           text eol=crlf
+
+# Binary artefacts.
+*.sqlite        binary
+*.parquet       binary
+*.png           binary
+*.gif           binary
+*.pkl           binary
+*.txt.gz        binary
