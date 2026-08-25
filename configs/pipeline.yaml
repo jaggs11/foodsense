@@ -80,7 +80,26 @@ stage2:
   # + lambda2 * L1(x, x0) / scale            stay close to the planned meal
   # + lambda3 * (items changed) / n          change as few things as possible
   # + big_penalty * hard safety violations
-  lambda_validity: 1.0
+  #
+  # lambda_validity departs from the design brief's 1.0, on measured evidence.
+  # The validity term is bounded by the target (0.70) because f is in [0,1], while
+  # sparsity costs 0.15 per edit, so at 1.0 the optimiser cannot afford the edits
+  # a meal needs: over 24 sampled cases it made 0.58 edits and improved the
+  # guideline score by +0.019, i.e. it repaired safety and then stopped.
+  # Measured sweep (24 cases, 8 per age group):
+  #
+  #   lambda1   soft after   delta    valid%   edits   L1 g   safe%
+  #      1.0        0.474   +0.019      12%    0.58     22    100%
+  #      2.0        0.495   +0.041      17%    0.71     30    100%
+  #      3.0        0.536   +0.081      25%    0.96     43    100%
+  #      5.0        0.617   +0.162      42%    1.42     59    100%
+  #      8.0        0.675   +0.221      58%    2.21     98    100%
+  #
+  # 5.0 is chosen as the smallest weight that materially improves the meal while
+  # keeping the mean edit count well inside the two-edit scale of the proposal's
+  # own worked example. Note safety is 100% at every setting: that guarantee is
+  # structural, not a consequence of tuning.
+  lambda_validity: 5.0
   lambda_distance: 0.4
   lambda_sparsity: 0.15
   big_penalty: 1000.0
@@ -92,6 +111,19 @@ stage2:
   # A quantity moved by less than this is not counted as a change; without it,
   # floating-point noise reads as an edit.
   quantity_epsilon_g: 2.0
+
+  # Smallest amount that counts as being in the meal at all -- a separate idea
+  # from the epsilon above. Without a floor the optimiser finds that a two-gram
+  # sliver of lentils nudges the fibre score at almost no distance cost, and
+  # returns a meal with three garnish-sized additions nobody would serve.
+  min_serving_g: 10.0
+
+  # Preference for the config's declared nearest-safe-form when a hazard has to
+  # be repaired. Small on purpose: it decides between forms the rules consider
+  # equally safe, and never outweighs safety, validity or distance. Without it
+  # the optimiser repairs whole grapes by pureeing them, which is safe but is not
+  # what the AAP's map says to do.
+  lambda_form_preference: 0.05
 
   # Differential evolution, per the design brief.
   population_size: 40

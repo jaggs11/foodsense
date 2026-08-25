@@ -6,10 +6,12 @@
 #          20-35% of energy.
 #   DGA    Dietary Guidelines for Americans 2020-2025.
 #
-# The bands below are the design brief's narrowed AMDR (protein 15-30%,
-# carbohydrate 45-60%, fat 25-35%), which sit inside the DRI ranges. Toddlers
-# need a higher fat share than adults; the age layer supplies that separately
-# rather than this goal loosening its band.
+# Protein and carbohydrate use the design brief's narrowed bands (15-30% and
+# 45-60%), which sit inside the DRI ranges. Fat uses the NASEM AMDR itself,
+# 20-35%: the brief's narrower 25-35% floor penalised genuinely healthy low-fat
+# meals -- a lean chicken, brown rice and broccoli plate scored 0.16 on this rule
+# alone. Toddlers need a higher fat share than adults; the age layer supplies
+# that separately rather than this goal loosening its band further.
 
 goal: balanced_nutrition
 label: "Balanced nutrition"
@@ -25,4 +27,4 @@ per_meal:
 energy_shares:
   protein_g: {min: 0.15, max: 0.30, weight: 1.2}
   carbohydrate_g: {min: 0.45, max: 0.60, weight: 1.2}
-  fat_g: {min: 0.25, max: 0.35, weight: 1.2}
+  fat_g: {min: 0.20, max: 0.35, weight: 1.2}

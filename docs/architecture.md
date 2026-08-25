@@ -127,12 +127,71 @@ did, until `per_meal_floor_attainment` was introduced.
 
 The softening has one subtlety worth recording. Scaling each bound of a *band* by its
 own magnitude makes narrow bands unsatisfiable: a meal sitting exactly in the middle
-of the 25-35% fat-share band scored 0.57. Bands are therefore softened by the width of
-the band, which puts the centre near 1.0 and keeps each edge at exactly 0.5.
+of a 25-35% fat-share band scored 0.57. Bands are therefore softened by the width of
+the band, which puts the centre near 1.0 and keeps each edge at exactly 0.5. (That
+particular band is now the NASEM AMDR's 20-35%; the arithmetic problem was general.)
 
 ## 4. Search space and objective
 
-_(Phase 3)_
+### Availability is structural, not a penalty
+
+Extension #1 is implemented by what the search space *contains*. `space.py` builds
+decision variables from `planned_meal + pantry` and nothing else, so an unavailable
+food has no variable and no point in the space can contain one. The alternative --
+letting every food into the space and penalising the unavailable ones -- would make
+availability a quantity the optimiser can trade away against some other gain, at
+whatever exchange rate the weights happen to imply. Here there is no exchange rate,
+because there is nothing to trade.
+
+This is why `tests/test_stage2.py` tests the property rather than a run: it samples
+hundreds of random points in the space and asserts that every decoded meal stays
+inside the available set. A test that merely checked one optimiser run had not used
+an unavailable food would be testing luck.
+
+Each food contributes two dimensions: a continuous `quantity_g`, and a `form` index
+decoded through that food's `allowed_forms`. The second is what lets a choking hazard
+be repaired by re-forming a food rather than deleting it, and it is also something a
+generic tabular counterfactual method cannot express at all.
+
+### The objective, and two things measurement changed
+
+    lambda1 * max(0, target - f(x))          get the meal over the line
+  + lambda2 * L1(x, x0) / scale              stay close to what was planned
+  + lambda3 * (items changed)                change as few things as possible
+  + lambda_form * (form-change cost)         prefer the declared nearest safe form
+  + big_penalty * (hard safety violations)   never trade safety for anything
+
+The validity term is one-sided on purpose. Once `f(x)` clears the target there is
+nothing more to gain, so the optimiser stops improving nutrition and starts
+minimising distance -- which is what keeps the output an *edit* rather than a
+replacement meal.
+
+Two terms were added or changed on evidence rather than taste, and both are recorded
+with their measurements in `configs/pipeline.yaml`:
+
+- **`lambda_validity` is 5.0, not the brief's 1.0.** Because `f` is in [0,1], the
+  validity term is bounded by the target (0.70) while sparsity costs 0.15 per edit.
+  At 1.0 the optimiser cannot afford the edits a meal needs: across 24 sampled cases
+  it made 0.58 edits and improved the guideline score by +0.019 -- it repaired safety
+  and then stopped. The full sweep is in the config. Safety was 100% at every setting,
+  which is the point: that guarantee does not depend on tuning.
+- **`lambda_form_preference` (0.05) and a per-form cost.** Without it the optimiser
+  repaired whole grapes by *pureeing* them. That is safe, and the rules accept it, but
+  it is not what the AAP's nearest-safe-form map says to do. The cost is small enough
+  that it only ever decides between forms the rules consider equally safe.
+
+A `min_serving_g` floor of 10 g was also needed: without it the optimiser discovered
+that a two-gram sliver of lentils nudges the fibre score at almost no distance cost,
+and returned meals with three garnish-sized additions nobody would serve.
+
+### Validity is judged by the rules, never by the surrogate
+
+The optimiser climbs `f`, but whether it has succeeded is decided by
+`RuleEngine.is_valid`. An optimiser marked by its own model can always win by finding
+that model's blind spots; this is the structural guarantee that it cannot. It is also
+why the early-stopping condition is "valid by the rules *and* plateaued" rather than
+"the objective stopped moving".
+
 
 ## 5. Retrieval and generation contract
 

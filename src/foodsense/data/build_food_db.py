@@ -398,8 +398,11 @@ FORMS_BY_CATEGORY: dict[str, tuple[Form, ...]] = {
 #: Hazard classes override the category default, because the hazard is precisely
 #: about which forms are physically available.
 FORMS_BY_HAZARD: dict[str, tuple[Form, ...]] = {
-    "grape": (Form.WHOLE, Form.QUARTERED, Form.SLICED, Form.MASHED, Form.PUREED),
-    "cherry_tomato": (Form.WHOLE, Form.QUARTERED, Form.CHOPPED, Form.PUREED),
+    # No SLICED: a grape cut into rounds is still an airway plug, and the AAP
+    # guidance is specifically to quarter lengthwise. Leaving the form out of the
+    # search space is stronger than banning it -- the optimiser cannot pick it.
+    "grape": (Form.WHOLE, Form.QUARTERED, Form.MASHED, Form.PUREED),
+    "cherry_tomato": (Form.WHOLE, Form.QUARTERED, Form.PUREED),
     "nut": (Form.WHOLE, Form.CHOPPED, Form.GROUND),
     "seed": (Form.WHOLE, Form.GROUND),
     "nut_butter": (Form.SPOONFUL, Form.THIN_SPREAD),

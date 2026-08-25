@@ -105,8 +105,8 @@ class TestSatisfaction:
         """A value in the middle of a band must score near 1, not near a half.
 
         Regression test: softening each bound by its own magnitude made the
-        acceptable fat share (25-35% of energy) unsatisfiable, scoring 0.57 at a
-        perfect 30%.
+        a narrow band unsatisfiable -- the 25-35% fat share this goal originally
+        carried scored 0.57 at a perfect 30%.
         """
         threshold = Threshold(minimum=0.25, maximum=0.35)
         assert satisfaction(0.30, threshold, 0.15) > 0.9
@@ -172,6 +172,11 @@ class TestConfigs:
 
     def test_every_gi_category_is_a_real_database_category(self, db):
         assert set(GI_BY_CATEGORY) <= set(db.categories())
+
+    def test_balanced_nutrition_fat_band_is_the_nasem_amdr(self):
+        """20-35%, not the brief's narrower 25-35%, which penalised lean meals."""
+        band = load_goal_config(Goal.BALANCED_NUTRITION).energy_shares["fat_g"]
+        assert (band.minimum, band.maximum) == (0.20, 0.35)
 
 
 # ---------------------------------------------------------------------------

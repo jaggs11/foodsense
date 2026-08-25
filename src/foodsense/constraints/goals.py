@@ -156,9 +156,9 @@ def satisfaction(value: float, threshold: Threshold, softness: float) -> float:
     if threshold.minimum is not None and threshold.maximum is not None:
         # For a band, soften by the width of the band rather than by the size of
         # each bound. Using each bound's own magnitude makes a narrow band
-        # unsatisfiable: the acceptable fat share is 25-35% of energy, and a meal
-        # sitting exactly in the middle at 30% would score 0.57, because it is
-        # only 1.3 sigmoid-widths above the floor and 0.95 below the ceiling.
+        # unsatisfiable: with a 25-35% fat-share band (the value this goal used to
+        # carry), a meal sitting exactly in the middle at 30% scored 0.57, because
+        # it is only 1.3 sigmoid-widths above the floor and 0.95 below the ceiling.
         # Scaling by the band width puts the centre near 1.0 and keeps each edge
         # at exactly 0.5.
         width = max((threshold.maximum - threshold.minimum) * softness, _MIN_WIDTH)

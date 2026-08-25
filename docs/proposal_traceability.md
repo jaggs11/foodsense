@@ -6,12 +6,13 @@ be "claimed" without a file and a test behind it.
 
 | # | Proposal claim | Module / file | Test |
 |---|----------------|---------------|------|
-| 1 | Availability-aware CF search space | `stage2_optimizer/space.py` | _(Phase 3)_ |
-| 2 | Modification-based minimal editing | `stage2_optimizer/objective.py` | _(Phase 3)_ |
+| 1 | Availability-aware CF search space | `stage2_optimizer/space.py` | `test_stage2.py::TestSearchSpace::test_no_reachable_point_contains_an_unavailable_food` (property over 300 random points), `test_variables_are_exactly_planned_union_pantry`; measured 0% violation in `results/cf_comparison.md` |
+| 2 | Modification-based minimal editing | `stage2_optimizer/objective.py` | `test_stage2.py::TestObjective` (planned meal has zero distance/sparsity; safety cannot be traded away), `TestDifferentialEvolution::test_the_edit_is_minimal` |
 | 3 | Post-generation verification layer | `stage4_verification/verifier.py` | _(Phase 4)_ |
 | 4 | Generalised health goals | `constraints/goals.py`, `configs/goals/` | `test_constraints.py::TestConfigs::test_every_goal_has_a_config_with_rules`, `TestRuleEngine::test_the_same_meal_scores_differently_for_different_profiles` |
 | 5 | Age / life-stage personalisation | `constraints/age_rules.py`, `configs/age_groups/` | `test_constraints.py::TestChokingHazards` (one case per banned pair), `TestMedicationInteractions`, `TestTexture` |
 | -- | Four-stage MetaPlate pipeline preserved | `pipeline.py` | _(Phase 4)_ |
+| -- | Nearest-safe-form repair, not removal | `stage2_optimizer/space.py` form costs | `test_stage2.py::TestDifferentialEvolution::test_it_repairs_grapes_by_quartering_rather_than_removing`, `test_it_removes_the_peanuts` |
 | -- | Two-corpus comparative analysis | `data/corpora.py`, `experiments/run_dataset_comparison.py` | `test_data.py::TestCorpora`, Stage-1 metrics on both corpora in `models/stage1_metrics.json` |
 
 ## Safety rules, individually

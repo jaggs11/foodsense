@@ -90,10 +90,33 @@ class RuleEngine:
     def __init__(self, db: FoodDB | None = None, config: RuleEngineConfig | None = None) -> None:
         self.db = db or get_food_db()
         self.config = config or RuleEngineConfig.load()
+        self._rules_cache: dict[tuple, list[Rule]] = {}
 
     # -- rule assembly ------------------------------------------------------
 
+    @staticmethod
+    def _profile_key(profile: UserProfile) -> tuple:
+        """Everything about a profile that changes which rules apply."""
+        return (
+            profile.age_group,
+            profile.goal,
+            profile.age_months,
+            profile.weight_kg,
+            tuple(sorted(f.value for f in profile.health_flags)),
+        )
+
     def rules_for(self, profile: UserProfile) -> list[Rule]:
+        """Cached per profile: the Stage-2 inner loop asks for these on every
+        candidate, and rebuilding them from YAML-derived configs each time was
+        the single largest cost in the optimiser's profile."""
+        key = self._profile_key(profile)
+        cached = self._rules_cache.get(key)
+        if cached is None:
+            cached = self._build_rules(profile)
+            self._rules_cache[key] = cached
+        return cached
+
+    def _build_rules(self, profile: UserProfile) -> list[Rule]:
         """Every numeric rule in force for this profile: age, then goal, then flags.
 
         Later rules override earlier ones on the same quantity, so a flag can
@@ -210,6 +233,29 @@ class RuleEngine:
             for rule in self.rules_for(profile)
             if rule.severity == "hard" and rule.quantity in metrics
         )
+
+    def count_hard_violations(self, meal: Meal | list[MealItem], profile: UserProfile) -> int:
+        """Number of hard-safety rules this meal breaks.
+
+        The Stage-2 inner loop calls this once per candidate -- tens of thousands
+        of times per recommendation -- so it does the minimum: the structural
+        scans, then the handful of *hard* numeric rules, computing metrics only
+        when such a rule exists. A full :meth:`evaluate` would additionally score
+        every soft guideline, which the optimiser gets from the surrogate instead.
+        """
+        items = meal.items if isinstance(meal, Meal) else list(meal)
+        count = len(self._structural_checks(items, profile))
+
+        hard_rules = [r for r in self.rules_for(profile) if r.severity == "hard"]
+        if hard_rules:
+            metrics = meal_metrics(items, self.db)
+            count += sum(
+                1
+                for rule in hard_rules
+                if rule.quantity in metrics
+                and not rule.threshold.is_satisfied(metrics[rule.quantity])
+            )
+        return count
 
     def hard_violations(self, meal: Meal | list[MealItem], profile: UserProfile) -> list[Violation]:
         return self.evaluate(meal, profile).hard_violations

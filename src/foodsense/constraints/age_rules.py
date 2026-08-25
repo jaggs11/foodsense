@@ -75,7 +75,18 @@ class ChokingBan:
     def rule_id(self) -> str:
         return f"toddler.choking.{self.hazard_class}"
 
-    def bans(self, form: Form) -> bool:
+    def bans(self, form: Form, age_months: int | None = None) -> bool:
+        """Whether this form of this food is forbidden at this age.
+
+        When a ban carries ``safe_form_min_age_months`` and the child is below it,
+        *every* form is forbidden -- "there is no safe preparation at this age" and
+        "only the whole form is banned" cannot both be true. Without this the
+        optimiser escapes an age-gated hazard by picking a form the narrow ban list
+        happens not to name: whole peanuts are banned for an eighteen-month-old,
+        so chopped peanuts must be too, or the ban achieves nothing.
+        """
+        if self.safe_form_min_age_months is not None and not self.safe_forms_for(age_months):
+            return True
         return self.banned_forms is None or form in self.banned_forms
 
     def safe_forms_for(self, age_months: int | None) -> tuple[Form, ...]:
@@ -349,7 +360,7 @@ def check_choking(
         if record is None or not record.hazard_class:
             continue
         ban = by_hazard.get(record.hazard_class)
-        if ban is None or not ban.bans(item.form):
+        if ban is None or not ban.bans(item.form, profile.age_months):
             continue
         # A repair is only real if the food can physically take that form.
         safe_form = ban.repair_for(record.allowed_forms, profile.age_months)
@@ -474,7 +485,7 @@ def nearest_safe_form(item: MealItem, profile: UserProfile, db: FoodDB) -> Form 
         preferred = ban.repair_for(tuple(candidates), profile.age_months)
         if preferred is not None:
             return preferred
-        candidates = [f for f in candidates if not ban.bans(f)]
+        candidates = [f for f in candidates if not ban.bans(f, profile.age_months)]
 
     if not candidates:
         return None
