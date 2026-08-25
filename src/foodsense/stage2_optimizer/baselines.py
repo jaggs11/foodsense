@@ -2,12 +2,18 @@
 
 Four comparators, chosen so that each isolates one thing FoodSense does:
 
+``wachter_restricted``
+    Our differential evolution with the safety and sparsity terms removed --
+    validity and L1 distance only, in the spirit of Wachter et al. (2017) -- but
+    still searching only what the user has. Isolates the cost of the *objective*
+    terms from the cost of the *restriction*, which is the question a reader will
+    ask the moment they see FoodSense's validity is lower than an unconstrained
+    method's.
 ``wachter``
-    *Our own* differential evolution with the availability, safety and sparsity
-    terms removed -- validity and L1 distance only, in the spirit of Wachter et
-    al. (2017). Same search algorithm, same budget, same surrogate. Any
-    difference in the results is attributable to the constraints and to nothing
-    else, which is what makes it an ablation rather than a different system.
+    The same again, now availability-blind. The gap between it and
+    ``wachter_restricted`` is what the availability restriction costs; the gap
+    between ``wachter_restricted`` and FoodSense is what safety and minimality
+    cost. Same search algorithm, same budget, same surrogate throughout.
 ``dice_random`` / ``dice_genetic``
     DiCE (Mothilal et al., 2020) via ``dice-ml``, model-agnostic and
     availability-blind. It is a genuinely different search, and it also cannot
@@ -74,7 +80,14 @@ _POOL_CATEGORIES = (
     "baked",
 )
 
-METHODS = ("foodsense_de", "wachter", "dice_random", "dice_genetic", "greedy")
+METHODS = (
+    "foodsense_de",
+    "wachter_restricted",
+    "wachter",
+    "dice_random",
+    "dice_genetic",
+    "greedy",
+)
 
 
 class _BudgetExceeded(RuntimeError):
@@ -542,6 +555,28 @@ def run_method(method: str, context: MethodContext) -> CFResult:
             context.budget,
             use_safety=True,
             use_sparsity=True,
+            seed=context.seed,
+        )
+
+    if method == "wachter_restricted":
+        # Same restricted space as FoodSense, so the only difference is the
+        # objective. Availability violations are impossible here by construction.
+        space = build_space(
+            context.planned_meal, context.pantry, context.db, profile=context.profile
+        )
+        return _run_de(
+            method,
+            space,
+            context.planned_meal,
+            context.profile,
+            context.model,
+            engine,
+            config,
+            context.de_config,
+            score_before,
+            context.budget,
+            use_safety=False,
+            use_sparsity=False,
             seed=context.seed,
         )
 

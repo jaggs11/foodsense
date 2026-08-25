@@ -1,0 +1,24 @@
+{
+  "wachter_restricted": {
+    "plateaued_without_validity": 153,
+    "valid_and_plateaued": 129,
+    "evaluation_budget": 18
+  },
+  "foodsense_de": {
+    "plateaued_without_validity": 242,
+    "valid_and_plateaued": 47,
+    "evaluation_budget": 11
+  },
+  "wachter": {
+    "plateaued_without_validity": 170,
+    "evaluation_budget": 25,
+    "valid_and_plateaued": 105
+  },
+  "dice_genetic": {
+    "evaluation_budget_exhausted": 296,
+    "dice_failed: UserConfigValidationException": 1
+  },
+  "dice_random": {
+    "evaluation_budget_exhausted": 114
+  }
+}
