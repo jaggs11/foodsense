@@ -1,0 +1,26 @@
+# Goal: weight management.
+#
+# Sources
+#   DGA    Dietary Guidelines for Americans 2020-2025 -- energy density,
+#          protein adequacy during energy restriction, fibre and satiety.
+#   NASEM  Dietary Reference Intakes (AMDR for protein).
+#
+# The thresholds are the ones named in the design brief: a per-meal energy
+# ceiling with a protein floor and a fibre floor, so that cutting calories does
+# not also cut the two things that make a smaller meal tolerable.
+
+goal: weight_management
+label: "Weight management"
+description: >-
+  Cap the energy of a single meal while protecting protein and fibre, which are
+  what keep an energy-restricted meal satiating.
+
+per_meal:
+  energy_kcal: {max: 550, weight: 2.0}
+  protein_g: {min: 25, weight: 1.5}
+  fiber_g: {min: 8, weight: 1.2}
+  saturated_fat_g: {max: 7, weight: 0.8}
+  sugars_g: {max: 20, weight: 0.6}
+
+energy_shares:
+  protein_g: {min: 0.20, max: 0.45, weight: 1.0}

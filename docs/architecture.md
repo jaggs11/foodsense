@@ -54,8 +54,44 @@ explicit feature, so that goal remains faithful to MetaPlate's glucose origin.
 
 ## 3. Why `(food, form)` and not just `food`
 
-_(Phase 2)_ Choking hazard is a property of the pair, not the ingredient. See
-`constraints/age_rules.py`.
+A choking hazard is a property of the *pair*. Whole grapes are unsafe for a toddler;
+quartered grapes are not. Encoding the ban as `(hazard_class, form)` gives the
+optimiser a cheap repair -- change the form -- rather than forcing it to delete the
+food, which is what makes the toddler worked example come out the way the proposal
+describes.
+
+Three cases fall out of that encoding, all of them data in
+`configs/age_groups/toddler.yaml` rather than branches in code:
+
+- **A safe form exists.** Grapes move to `quartered`, hard raw vegetables to
+  `soft_cooked`, hot dogs from `sliced_rounds` to `minced`.
+- **No safe form exists.** Popcorn, marshmallows, hard candy and gum are banned in
+  every form, and the curated database gives those foods exactly one allowed form,
+  so the search space offers no escape hatch. The only repair is removal.
+- **A safe form exists, but only above a certain age.** Whole nuts can be ground for
+  a three-year-old and not for an eighteen-month-old. `safe_form_min_age_months`
+  carries this, and an unknown age is treated as the youngest -- guessing wrong in
+  the other direction costs a choking hazard rather than an inconvenience.
+
+Medication and condition rules live in `configs/health_flags.yaml` rather than inside
+each age group, because they are age-independent: a 40-year-old on warfarin needs the
+same vitamin-K consistency as an 80-year-old.
+
+### Calibrating a per-meal target
+
+Daily reference intakes have to become per-meal ones, and floors and ceilings do not
+divide the same way. Exceeding a sodium ceiling in one meal genuinely matters, so
+ceilings are the proportional share `daily / meals_per_day`. Floors are different:
+micronutrient adequacy is assessed across a day and is heavily skewed between meals.
+Measured on 400 Food.com meals, a median single serving supplies 0.22 of a
+proportional calcium floor, 0.29 of an iron one and 0.02 of a vitamin-D one --
+so demanding the full share would mark essentially every real meal non-compliant, and
+did, until `per_meal_floor_attainment` was introduced.
+
+The softening has one subtlety worth recording. Scaling each bound of a *band* by its
+own magnitude makes narrow bands unsatisfiable: a meal sitting exactly in the middle
+of the 25-35% fat-share band scored 0.57. Bands are therefore softened by the width of
+the band, which puts the centre near 1.0 and keeps each edge at exactly 0.5.
 
 ## 4. Search space and objective
 

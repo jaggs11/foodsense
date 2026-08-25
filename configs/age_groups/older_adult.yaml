@@ -1,0 +1,85 @@
+# Older adult, 65 years and over.
+#
+# Sources
+#   NASEM   Dietary Reference Intakes; RDA/AI values for the 51-70 y and 70+ y
+#           life-stage groups.
+#   DGA     Dietary Guidelines for Americans 2020-2025, "Older Adults" chapter.
+#   AHA     American Heart Association sodium guidance (2300 mg/d general,
+#           1500 mg/d ideal for adults with hypertension).
+#   ESPEN   Clinical Nutrition guideline on nutrition and hydration in geriatrics
+#           (protein 1.0-1.2 g/kg/d for healthy older adults).
+#   IDDSI   International Dysphagia Diet Standardisation Initiative (texture).
+#
+# Per-meal targets are `daily / meals_per_day` unless listed under `per_meal`.
+
+age_group: older_adult
+label: "Older adult (65+)"
+description: >-
+  Falling energy needs alongside unchanged or higher nutrient needs, so nutrient
+  density matters more than volume. Medication-food interactions and swallowing
+  safety are the hard constraints.
+
+meals_per_day: 3.0
+
+# ESPEN/DRI reference weight; overridden by UserProfile.weight_kg when supplied.
+default_weight_kg: 70.0
+
+# Floors and ceilings do not divide across meals the same way. A ceiling that is
+# exceeded in one meal genuinely matters, so ceilings are the proportional share.
+# A floor does not: micronutrient adequacy is assessed over a day and is heavily
+# skewed between meals. Measured on 400 Food.com meals, a median single serving
+# supplies 0.22 of a proportional calcium floor and 0.29 of an iron one, so
+# demanding the full share would mark every real meal as non-compliant. This
+# factor is the share of the proportional floor a meal is expected to pull.
+per_meal_floor_attainment: 0.6
+
+daily:
+  # NASEM DRI, EER for a low-active older adult.
+  energy_kcal: {min: 1600, max: 2200, weight: 1.0}
+  # NASEM DRI, RDA 1200 mg/d for women 51+ and men 71+.
+  calcium_mg: {min: 1200, weight: 1.2}
+  # NASEM DRI, RDA 20 ug/d (800 IU) for adults over 70.
+  # Only 17% of the curated database carries any vitamin D; see the note in
+  # adult.yaml. Low weight, not because it does not matter clinically but
+  # because a single meal cannot carry it.
+  vitamin_d_ug: {min: 20, weight: 0.4}
+  # NASEM DRI, AI ~28-30 g/d; DGA older-adults chapter flags fibre as commonly
+  # under-consumed at this life stage.
+  fiber_g: {min: 28, weight: 1.0}
+  # AHA: 2300 mg/d for the general population. The hypertension flag tightens
+  # this to a per-meal cap -- see `conditional` in configs/health_flags.yaml.
+  sodium_mg: {max: 2300, weight: 1.3}
+  # NASEM DRI, RDA 2.4 ug/d. Absorption falls with age, so it is worth a rule.
+  vitamin_b12_ug: {min: 2.4, weight: 0.8}
+  # NASEM DRI, AI 4700 mg/d. Capped hard when a potassium-sparing drug is on
+  # board (see configs/health_flags.yaml).
+  potassium_mg: {min: 3400, weight: 0.6}
+  # DGA: saturated fat under 10% of energy.
+  saturated_fat_g: {max: 22, weight: 0.8}
+  # NASEM DRI, RDA 8 mg/d for adults 51+.
+  iron_mg: {min: 8, weight: 0.6}
+
+# ESPEN: 1.0-1.2 g/kg/d for healthy older adults. At the 70 kg reference weight
+# and three meals a day that is the >= 25 g/meal target the design brief asks
+# for. Expressed per-kg so a supplied body weight is actually used.
+protein_g_per_kg:
+  min: 1.0
+  max: 1.6
+  weight: 1.4
+
+per_meal: {}
+
+# No choking-hazard bans at this life stage; swallowing safety is handled by the
+# dysphagia flag in configs/health_flags.yaml, which restricts forms IDDSI-style.
+choking_bans: []
+
+texture_notes:
+  minced: "finely minced and moist"
+  mashed: "mashed, no separate thin liquid"
+  pureed: "smooth pureed, no lumps"
+  soft_cooked: "cooked soft enough to break with a fork"
+  chopped: "cut into small pieces"
+  sliced: "thinly sliced"
+
+strict_no_added_sugar_below_months: null
+honey_min_age_months: null

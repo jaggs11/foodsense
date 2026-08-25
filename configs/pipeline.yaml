@@ -1,0 +1,129 @@
+# Pipeline-wide settings: objective weights, optimiser hyperparameters,
+# tolerances and the random seed. Nothing here is a nutrition threshold -- those
+# live in configs/age_groups/ and configs/goals/ with their sources attached.
+
+seed: 42
+
+# --------------------------------------------------------------------------
+# Rule engine
+# --------------------------------------------------------------------------
+rule_engine:
+  # Relative width of the sigmoid used to soften every threshold, as a fraction
+  # of the threshold itself. At the threshold a rule scores exactly 0.5; at
+  # 1 +/- 2*softness it is close to saturated. This is what makes the guideline
+  # score differentiable enough for a surrogate to learn and an optimiser to
+  # climb -- a hard step function gives neither of them anything to follow.
+  softness: 0.15
+
+  # Each hard-safety violation multiplies the score by this. One violation drops
+  # a meal from 0.9 to 0.09; two put it at 0.009. "Multiply toward zero" rather
+  # than "set to zero" keeps the surface informative: a meal with one hazard is
+  # genuinely better than a meal with three, and the optimiser needs to see that.
+  hard_violation_factor: 0.10
+
+  # A soft rule scoring below this is recorded as a violation in the report.
+  # 0.5 is exactly the threshold, so this flags any rule actually crossed.
+  soft_violation_threshold: 0.5
+
+# --------------------------------------------------------------------------
+# Stage 1: suitability surrogate
+# --------------------------------------------------------------------------
+stage1:
+  # Gaussian noise added to weak-supervision labels. Stops the surrogate from
+  # memorising the exact rule boundaries and forces it to learn a smooth
+  # approximation -- which is the entire reason it exists.
+  label_noise_sigma: 0.05
+
+  # What Stage 2 optimises toward, and the "meets target" line for evaluation.
+  #
+  # Calibrated against measurement rather than picked: across 500 Food.com meals
+  # crossed with sampled profiles, unoptimised meals score a median of 0.43 and a
+  # 90th percentile of 0.60, while deliberately well-constructed meals reach
+  # 0.52-0.80 depending on how tightly the profile is constrained. 0.70 therefore
+  # sits above almost every unedited meal and inside what a good edit can reach --
+  # a bar the optimiser has to work for but can actually clear.
+  target_score: 0.70
+
+  # Thresholds at which the thresholded "meets target" AUC is reported. More than
+  # one, because at the target itself the positive class is small; the lower
+  # thresholds show whether the model ranks meals correctly across the range.
+  auc_thresholds: [0.45, 0.55, 0.70]
+
+  n_train_meals: 8000
+  n_profiles_per_meal: 3
+  perturbation_rate: 0.5
+  test_size: 0.2
+
+  lightgbm:
+    n_estimators: 600
+    learning_rate: 0.05
+    num_leaves: 63
+    min_child_samples: 20
+    subsample: 0.9
+    subsample_freq: 1
+    colsample_bytree: 0.9
+    reg_lambda: 1.0
+  xgboost:
+    n_estimators: 600
+    learning_rate: 0.05
+    max_depth: 7
+    subsample: 0.9
+    colsample_bytree: 0.9
+    reg_lambda: 1.0
+
+# --------------------------------------------------------------------------
+# Stage 2: counterfactual optimiser
+# --------------------------------------------------------------------------
+stage2:
+  # Objective weights from the design brief:
+  #   lambda1 * max(0, target - f(x))        validity pressure
+  # + lambda2 * L1(x, x0) / scale            stay close to the planned meal
+  # + lambda3 * (items changed) / n          change as few things as possible
+  # + big_penalty * hard safety violations
+  lambda_validity: 1.0
+  lambda_distance: 0.4
+  lambda_sparsity: 0.15
+  big_penalty: 1000.0
+
+  # Grams by which the L1 distance is normalised, so the distance term is
+  # comparable across meals of different sizes.
+  distance_scale_g: 200.0
+
+  # A quantity moved by less than this is not counted as a change; without it,
+  # floating-point noise reads as an edit.
+  quantity_epsilon_g: 2.0
+
+  # Differential evolution, per the design brief.
+  population_size: 40
+  max_generations: 200
+  mutation: [0.5, 1.0]
+  recombination: 0.7
+  # Stop once the meal is valid by the rule engine and the objective has stopped
+  # improving for this many generations.
+  early_stop_patience: 15
+  early_stop_tolerance: 1.0e-4
+
+  # Upper bound on any single item, and on how far an existing item may grow
+  # relative to its planned amount.
+  max_item_quantity_g: 400.0
+  max_growth_factor: 2.5
+
+# --------------------------------------------------------------------------
+# Stages 3 and 4
+# --------------------------------------------------------------------------
+stage3:
+  provider: template
+  temperature: 0.2
+  max_retries: 1
+  retrieval_top_k: 5
+  anthropic_model: claude-sonnet-4-6
+  openai_model: gpt-4o-mini
+  ollama_model: llama3.1
+
+stage4:
+  # Fuzzy name match at or above this is accepted; below it the item is flagged
+  # unmatched and replaced by the retriever's top candidate.
+  match_threshold: 85.0
+  # A claimed nutrient or quantity beyond this relative gap from the database
+  # value is corrected to the database value.
+  nutrient_tolerance: 0.10

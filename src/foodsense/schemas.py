@@ -30,6 +30,7 @@ __all__ = [
     "HealthFlag",
     "ItemChange",
     "ItemCorrection",
+    "Meal",
     "MealDiff",
     "MealItem",
     "NutrientVector",
@@ -339,6 +340,17 @@ class RuleEvaluation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     score: float = Field(..., ge=0.0, le=1.0, description="Continuous guideline-compliance score")
+    soft_score: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Guideline score from the numeric rules alone, before hard-safety violations "
+            "drive it toward zero. This is what the Stage-1 surrogate learns: hard safety "
+            "is a discrete property of (hazard_class, form) that no nutrient vector can "
+            "express, so Stage 2 enforces it with an explicit penalty term instead."
+        ),
+    )
     violations: list[Violation] = Field(default_factory=list)
     per_rule: dict[str, float] = Field(
         default_factory=dict, description="rule_id -> soft satisfaction in [0,1]"

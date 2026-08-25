@@ -1,0 +1,109 @@
+# Rules activated by UserProfile.health_flags.
+#
+# These are age-independent: a 40-year-old on warfarin needs the same vitamin-K
+# consistency as an 80-year-old. Keeping them in one file rather than repeating
+# them inside each age group's YAML means the three age configs cannot drift
+# apart on a safety rule.
+#
+# Sources
+#   Warfarin / vitamin K   FDA label guidance and standard anticoagulation
+#                          practice: keep vitamin K intake *consistent*, roughly
+#                          90-120 ug/d, rather than avoiding it.
+#   MAOI / tyramine        FDA labelling for monoamine oxidase inhibitors;
+#                          tyramine-restricted diet, aged/cured/fermented foods.
+#   ACE inhibitors and     FDA labelling; risk of hyperkalaemia, so potassium
+#   K-sparing diuretics    load per meal is capped.
+#   Statins / grapefruit   FDA "Grapefruit Juice and Some Drugs Don't Mix".
+#   Metformin / alcohol    FDA labelling; lactic-acidosis risk.
+#   Hypertension / sodium  AHA: 1500 mg/d ideal for adults with hypertension.
+#   Dysphagia / texture    IDDSI framework levels 4-6 (pureed to soft & bite-sized).
+#
+# `severity: hard` rules are safety rules: they drive the RuleEngine score toward
+# zero and are never traded off against convenience or minimality.
+
+rules:
+  warfarin:
+    label: "Warfarin (vitamin K consistency)"
+    severity: hard
+    per_meal_max:
+      # ~120 ug/meal keeps a single meal from swinging INR. Consistency is the
+      # goal, so this is a ceiling on variation, not an instruction to avoid
+      # leafy greens entirely.
+      vitamin_k_ug: 120
+    watch_tags: [leafy_green_vitk]
+    message: >-
+      Vitamin K in this meal is high enough to affect warfarin control; keep
+      leafy greens consistent from day to day.
+
+  maoi:
+    label: "MAOI (tyramine restriction)"
+    severity: hard
+    exclude_tags: [high_tyramine, aged_cheese, cured_meat]
+    message: >-
+      Aged, cured and fermented foods are high in tyramine and can cause a
+      hypertensive crisis with an MAOI.
+
+  ace_inhibitor_or_k_sparing_diuretic:
+    label: "ACE inhibitor or potassium-sparing diuretic"
+    severity: hard
+    per_meal_max:
+      potassium_mg: 1000
+    watch_tags: [high_potassium]
+    message: >-
+      Potassium in this meal is high enough to risk hyperkalaemia on this
+      medication.
+
+  statin:
+    label: "Statin (grapefruit interaction)"
+    severity: hard
+    exclude_tags: [grapefruit]
+    message: >-
+      Grapefruit blocks the enzyme that clears several statins, raising drug
+      levels and the risk of muscle injury.
+
+  metformin:
+    label: "Metformin (alcohol interaction)"
+    severity: hard
+    exclude_tags: [alcohol]
+    message: "Alcohol with metformin raises the risk of lactic acidosis."
+
+  dysphagia:
+    label: "Dysphagia (IDDSI texture restriction)"
+    severity: hard
+    allowed_forms: [minced, mashed, pureed, soft_cooked]
+    message: >-
+      Swallowing safety requires a modified texture; only minced, mashed,
+      pureed or soft-cooked forms are permitted.
+
+  hypertension:
+    label: "Hypertension (tightened sodium ceiling)"
+    severity: soft
+    per_meal_max:
+      # AHA ideal of 1500 mg/d over roughly three meals.
+      sodium_mg: 500
+    weight: 2.0
+    message: "Sodium is above the per-meal ceiling for someone managing blood pressure."
+
+  diabetes:
+    label: "Diabetes (glycemic load and sugars)"
+    severity: soft
+    per_meal_max:
+      glycemic_load: 20
+      sugars_g: 15
+    weight: 1.5
+    message: "Glycemic load is above the per-meal ceiling for someone managing diabetes."
+
+  iron_focus:
+    label: "Iron focus"
+    severity: soft
+    per_meal_min:
+      iron_mg: 2.0
+    weight: 1.5
+    message: "This meal contributes little iron, which this profile is prioritising."
+
+  strict_no_added_sugar:
+    label: "No added sugar"
+    severity: hard
+    per_meal_max:
+      added_sugars_g: 0.5
+    message: "No added sugar is permitted for this profile."

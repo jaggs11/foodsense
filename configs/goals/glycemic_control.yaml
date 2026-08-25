@@ -1,0 +1,32 @@
+# Goal: glycemic control.
+#
+# The goal closest to MetaPlate's origin. MetaPlate optimised a meal so the
+# predicted postprandial glucose response stayed at or below 140 mg/dL. We have
+# no CGM data for toddlers or older adults, so the equivalent lever here is
+# estimated per-meal glycemic load -- the quantity that actually drives that
+# response, and one that can be computed from composition alone.
+#
+# Sources
+#   ADA        Standards of Care in Diabetes: carbohydrate quality and quantity.
+#   Foster-Powell, Holt & Brand-Miller (2002), International table of glycemic
+#              index and glycemic load values -- the basis for the GI classes in
+#              constraints/goals.py.
+#   A GL of 20 per meal is the conventional boundary between a medium- and
+#   high-GL meal.
+
+goal: glycemic_control
+label: "Glycemic control"
+description: >-
+  Keep the estimated glycemic load of a single meal in the low-to-medium band
+  and hold free sugars down, without starving the meal of carbohydrate.
+
+per_meal:
+  glycemic_load: {max: 20, weight: 2.0}
+  sugars_g: {max: 15, weight: 1.5}
+  fiber_g: {min: 5, weight: 1.0}      # fibre blunts the glycemic response
+  protein_g: {min: 15, weight: 0.8}   # protein slows gastric emptying
+
+# Share of total energy, as a fraction. Carbohydrate is limited rather than
+# eliminated: very-low-carbohydrate meals are not the goal.
+energy_shares:
+  carbohydrate_g: {min: 0.30, max: 0.50, weight: 1.0}

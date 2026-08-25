@@ -1,0 +1,173 @@
+# Toddler, 1-3 years.
+#
+# Sources
+#   NASEM  Dietary Reference Intakes for Energy (2023) and for the individual
+#          nutrients; RDA/AI/CDRR values for the 1-3 y life-stage group.
+#   AAP    American Academy of Pediatrics, infant & toddler feeding guidance
+#          (choking prevention; added sugars under 2 years).
+#   CDC    Choking hazards for young children; sodium CDRR.
+#   DGA    Dietary Guidelines for Americans 2020-2025, "Toddlers 12-23 months"
+#          and "Children" chapters.
+#
+# Per-meal targets are `daily / meals_per_day` unless listed under `per_meal`.
+
+age_group: toddler
+label: "Toddler (1-3 years)"
+description: >-
+  Small stomach, high nutrient density per calorie, and the life stage where
+  choking risk dominates every other consideration.
+
+# Three meals plus a substantial snack. Dividing daily targets by this is a
+# simplification -- real intake is not evenly split -- but it is the same
+# simplification for every rule, so it does not bias one nutrient over another.
+meals_per_day: 3.5
+
+# NASEM DRI reference weight for 1-3 y (used for any per-kg rule).
+default_weight_kg: 12.0
+
+# Floors and ceilings do not divide across meals the same way. A ceiling that is
+# exceeded in one meal genuinely matters, so ceilings are the proportional share.
+# A floor does not: micronutrient adequacy is assessed over a day and is heavily
+# skewed between meals. Measured on 400 Food.com meals, a median single serving
+# supplies 0.22 of a proportional calcium floor and 0.29 of an iron one, so
+# demanding the full share would mark every real meal as non-compliant. This
+# factor is the share of the proportional floor a meal is expected to pull.
+per_meal_floor_attainment: 0.6
+
+daily:
+  # NASEM DRI, EER for 1-3 y (roughly 1000-1400 kcal/d depending on activity).
+  energy_kcal: {min: 1000, max: 1400, weight: 1.0}
+  # NASEM DRI, RDA 13 g/d.
+  protein_g: {min: 13, weight: 1.2}
+  # NASEM DRI, RDA 7 mg/d. Iron deficiency is the classic toddler risk, so this
+  # carries extra weight -- it is the nutrient the demo scenario is built around.
+  iron_mg: {min: 7, weight: 1.5}
+  # NASEM DRI, RDA 700 mg/d.
+  calcium_mg: {min: 700, weight: 1.0}
+  # NASEM DRI, RDA 15 ug/d (600 IU).
+  # Only 17% of the curated database carries any vitamin D, so even a good
+  # meal scores near zero here. Kept at low weight so it still nudges toward
+  # vitamin-D foods without dominating the guideline score.
+  vitamin_d_ug: {min: 15, weight: 0.3}
+  # NASEM DRI, RDA 3 mg/d.
+  zinc_mg: {min: 3, weight: 0.8}
+  # NASEM DRI, RDA 15 mg/d.
+  vitamin_c_mg: {min: 15, weight: 0.6}
+  # NASEM DRI, AI 19 g/d.
+  fiber_g: {min: 19, weight: 0.8}
+  # NASEM DRI, CDRR 1200 mg/d. Toddler foods are frequently over this.
+  sodium_mg: {max: 1200, weight: 1.5}
+  # DGA: added sugars <10% of energy; AAP: avoid entirely below 2 years.
+  # See `strict_no_added_sugar_below_months` below and note the data limitation
+  # in data/README.md -- USDA does not report added sugars, so this rule is
+  # evaluated against a documented proxy.
+  added_sugars_g: {max: 25, weight: 1.0}
+  # NASEM DRI, AMDR for 1-3 y is 30-40% of energy from fat -- toddlers need more
+  # fat than adults, so this is a floor as much as a ceiling.
+  saturated_fat_g: {max: 20, weight: 0.5}
+
+per_meal: {}
+
+# --------------------------------------------------------------------------
+# Choking hazards -- the hard-safety rules for this life stage.
+#
+# Each ban is a (hazard_class, form) pair, which is the whole point: whole
+# grapes are unsafe, quartered grapes are not. `safe_form` is what the optimiser
+# and the Stage-4 repair step move the item to; a null `safe_form` means no
+# preparation makes this food safe and it must be removed or substituted.
+#
+# Sources: AAP choking-prevention guidance; CDC "Choking Hazards" for children
+# under 4 years.
+# --------------------------------------------------------------------------
+choking_bans:
+  - hazard_class: grape
+    banned_forms: [whole]
+    safe_form: quartered
+    message: "Whole grapes are a choking hazard; quarter them lengthwise."
+
+  - hazard_class: cherry_tomato
+    banned_forms: [whole]
+    safe_form: quartered
+    message: "Whole cherry tomatoes are a choking hazard; quarter them."
+
+  # Nuts and seeds have a safe form only once the child is older. Below
+  # `safe_form_min_age_months` there is no safe preparation and the item must be
+  # substituted -- which is what the toddler demo scenario turns on.
+  - hazard_class: nut
+    banned_forms: [whole]
+    safe_form: ground
+    safe_form_min_age_months: 24
+    message: "Whole nuts are a choking hazard under 4 years."
+
+  - hazard_class: seed
+    banned_forms: [whole]
+    safe_form: ground
+    safe_form_min_age_months: 24
+    message: "Whole seeds are a choking hazard under 4 years."
+
+  - hazard_class: nut_butter
+    banned_forms: [spoonful]
+    safe_form: thin_spread
+    message: "Nut butter by the spoonful can block the airway; spread it thinly."
+
+  - hazard_class: hard_raw_vegetable
+    banned_forms: [whole, chopped, sliced]
+    safe_form: soft_cooked
+    message: "Hard raw vegetables must be cooked soft for a toddler."
+
+  - hazard_class: hot_dog
+    banned_forms: [whole, sliced_rounds]
+    safe_form: minced
+    message: >-
+      Hot dogs cut into rounds are the archetypal airway plug; mince them or cut
+      them lengthwise into thin strips.
+
+  # Chunks of meat are named as a choking hazard by the AAP alongside the items
+  # above. Enabled by default; set `enabled: false` to fall back to the narrower
+  # ban list in the design brief, which omits it.
+  - hazard_class: meat_chunk
+    banned_forms: [whole, sliced, chopped]
+    safe_form: minced
+    enabled: true
+    message: "Chunks of meat are a choking hazard; mince or grind them."
+
+  # No preparation makes these safe for a small child, so `safe_form` is null and
+  # the only repair is removal or substitution.
+  - hazard_class: popcorn
+    banned_forms: ["*"]
+    safe_form: null
+    message: "Popcorn is unsafe for children under 4 years in any form."
+
+  - hazard_class: marshmallow
+    banned_forms: ["*"]
+    safe_form: null
+    message: "Marshmallows are unsafe for children under 4 years in any form."
+
+  - hazard_class: hard_candy
+    banned_forms: ["*"]
+    safe_form: null
+    message: "Hard candy is unsafe for children under 4 years in any form."
+
+  - hazard_class: gum
+    banned_forms: ["*"]
+    safe_form: null
+    message: "Chewing gum is unsafe for children under 4 years."
+
+# Phrasing Stage 3 uses when it explains a form to a caregiver.
+texture_notes:
+  quartered: "cut into small quarters, lengthwise"
+  chopped: "cut into small pieces"
+  minced: "finely minced"
+  ground: "finely ground"
+  mashed: "mashed"
+  pureed: "pureed smooth"
+  soft_cooked: "cooked until soft"
+  thin_spread: "spread thinly"
+  sliced: "cut into thin strips"
+
+# AAP: no added sugars before 24 months. Turns the added-sugar ceiling into a
+# hard rule for children below this age.
+strict_no_added_sugar_below_months: 24
+
+# AAP/CDC: honey carries infant-botulism risk below 12 months.
+honey_min_age_months: 12

@@ -1,0 +1,28 @@
+# Goal: balanced nutrition.
+#
+# Sources
+#   NASEM  Dietary Reference Intakes -- Acceptable Macronutrient Distribution
+#          Ranges (AMDR) for adults: protein 10-35%, carbohydrate 45-65%, fat
+#          20-35% of energy.
+#   DGA    Dietary Guidelines for Americans 2020-2025.
+#
+# The bands below are the design brief's narrowed AMDR (protein 15-30%,
+# carbohydrate 45-60%, fat 25-35%), which sit inside the DRI ranges. Toddlers
+# need a higher fat share than adults; the age layer supplies that separately
+# rather than this goal loosening its band.
+
+goal: balanced_nutrition
+label: "Balanced nutrition"
+description: >-
+  No single target to hit -- keep the macronutrient split inside its acceptable
+  bands and let the age-group layer supply the micronutrient floors.
+
+per_meal:
+  fiber_g: {min: 5, weight: 0.8}
+
+# Share of total energy, as a fraction. Computed with 4/4/9 kcal per gram for
+# protein/carbohydrate/fat.
+energy_shares:
+  protein_g: {min: 0.15, max: 0.30, weight: 1.2}
+  carbohydrate_g: {min: 0.45, max: 0.60, weight: 1.2}
+  fat_g: {min: 0.25, max: 0.35, weight: 1.2}

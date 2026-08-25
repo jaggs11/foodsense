@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from rapidfuzz import fuzz, process
 
@@ -235,6 +236,17 @@ class FoodDB:
                 index.setdefault(token, []).append(i)
         self._index = index
         self._vocab: list[str] = list(index)
+
+        # --- vectorised nutrient lookup -----------------------------------
+        # Stage 2 evaluates thousands of candidate meals per run and each one
+        # needs a nutrient total. Building a Pydantic NutrientVector per item
+        # dominates that loop, so the per-100 g values are also held as one
+        # float matrix and totalled with numpy.
+        self.nutrient_index: dict[str, int] = {n: i for i, n in enumerate(NUTRIENTS)}
+        self._row_of: dict[str, int] = {r.fdc_id: i for i, r in enumerate(records)}
+        self._nutrient_matrix = np.asarray(
+            [r.nutrients_per_100g.as_tuple() for r in records], dtype=np.float64
+        ).reshape(len(records), len(NUTRIENTS))
         self._expansion_cache: dict[str, frozenset[str]] = {}
 
     # -- construction -------------------------------------------------------
@@ -446,6 +458,26 @@ class FoodDB:
         """
         items = meal.items if isinstance(meal, Meal) else meal
         return NutrientVector.sum([self.nutrients_for_item(i) for i in items])
+
+    def nutrient_totals(self, meal: Meal | list[MealItem]) -> np.ndarray:
+        """Meal nutrient totals as a float array in canonical :data:`NUTRIENTS` order.
+
+        The vectorised twin of :meth:`nutrients_for`. Same arithmetic, no object
+        allocation -- use this on hot paths and ``nutrients_for`` when a typed
+        :class:`NutrientVector` is what the caller actually wants.
+        """
+        items = meal.items if isinstance(meal, Meal) else meal
+        rows: list[int] = []
+        weights: list[float] = []
+        for item in items:
+            row = self._row_of.get(item.food_id)
+            if row is None:
+                continue
+            rows.append(row)
+            weights.append(item.quantity_g / 100.0)
+        if not rows:
+            return np.zeros(len(NUTRIENTS), dtype=np.float64)
+        return np.asarray(weights) @ self._nutrient_matrix[rows]
 
     def allowed_forms(self, food_id: str) -> tuple[Form, ...]:
         record = self.find(food_id)

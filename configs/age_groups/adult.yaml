@@ -1,0 +1,73 @@
+# Adult, 4-64 years. The default life stage.
+#
+# Sources
+#   NASEM  Dietary Reference Intakes; RDA/AI/CDRR values for adults 19-50 y.
+#   DGA    Dietary Guidelines for Americans 2020-2025.
+#   AHA    American Heart Association sodium guidance.
+#
+# This band deliberately carries no life-stage safety rules: an adult has no
+# choking-hazard or texture constraints unless a health flag says otherwise
+# (see configs/health_flags.yaml). It is the control case against which the
+# toddler and older-adult behaviour is compared.
+#
+# Per-meal targets are `daily / meals_per_day` unless listed under `per_meal`.
+
+age_group: adult
+label: "Adult (default)"
+description: >-
+  Standard adult reference intakes. Goal configuration does most of the work
+  here; the age layer mainly supplies floors for the nutrients adults commonly
+  under-consume.
+
+meals_per_day: 3.0
+
+default_weight_kg: 70.0
+
+# Floors and ceilings do not divide across meals the same way. A ceiling that is
+# exceeded in one meal genuinely matters, so ceilings are the proportional share.
+# A floor does not: micronutrient adequacy is assessed over a day and is heavily
+# skewed between meals. Measured on 400 Food.com meals, a median single serving
+# supplies 0.22 of a proportional calcium floor and 0.29 of an iron one, so
+# demanding the full share would mark every real meal as non-compliant. This
+# factor is the share of the proportional floor a meal is expected to pull.
+per_meal_floor_attainment: 0.6
+
+daily:
+  # NASEM DRI, EER for a moderately active adult.
+  energy_kcal: {min: 1800, max: 2600, weight: 1.0}
+  # NASEM DRI, AI 28-34 g/d; DGA flags fibre as under-consumed.
+  fiber_g: {min: 28, weight: 1.0}
+  # NASEM DRI, CDRR 2300 mg/d.
+  sodium_mg: {max: 2300, weight: 1.2}
+  # NASEM DRI, RDA 1000 mg/d for adults 19-50.
+  calcium_mg: {min: 1000, weight: 0.8}
+  # NASEM DRI, RDA 15 ug/d (600 IU).
+  # Only 17% of the curated database carries any vitamin D, so even a good
+  # meal scores near zero here. Kept at low weight so it still nudges toward
+  # vitamin-D foods without dominating the guideline score.
+  vitamin_d_ug: {min: 15, weight: 0.3}
+  # NASEM DRI, RDA 18 mg/d for women 19-50, 8 mg/d for men. The higher value is
+  # used so the rule is protective rather than permissive.
+  iron_mg: {min: 18, weight: 0.6}
+  # DGA: saturated fat under 10% of energy.
+  saturated_fat_g: {max: 22, weight: 0.9}
+  # DGA: added sugars under 10% of energy. See the data limitation note in
+  # data/README.md -- evaluated against a documented proxy.
+  added_sugars_g: {max: 50, weight: 0.8}
+  # NASEM DRI, AI 4700 mg/d; commonly under-consumed.
+  potassium_mg: {min: 3400, weight: 0.6}
+
+# NASEM DRI, RDA 0.8 g/kg/d, with an upper band well inside the AMDR.
+protein_g_per_kg:
+  min: 0.8
+  max: 2.0
+  weight: 1.0
+
+per_meal: {}
+
+choking_bans: []
+
+texture_notes: {}
+
+strict_no_added_sugar_below_months: null
+honey_min_age_months: null
