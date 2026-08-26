@@ -103,6 +103,12 @@ BUCKET_LABELS = {
 #: measurement artefact worth remedying. Fixed before the numbers were seen.
 MATERIAL_BUCKET_C = 0.20
 
+#: Split point for the starting-score stratification in section 3b. This is the
+#: median `score_before` of the sodium-gated sample, rounded; it is written down
+#: rather than recomputed per run so the strata mean the same thing across
+#: regenerations and cannot drift to flatter a conclusion.
+HEADROOM_SPLIT = 0.179
+
 
 def render(data, target: float) -> str:
     import pandas as pd
@@ -401,6 +407,98 @@ def render(data, target: float) -> str:
                 ]
 
     # ---------------------------------------------------------------- section 4
+    # ---------------------------------------------------------------- section 3b
+    # Why the sodium split runs the "wrong" way. Cheap to answer from these rows:
+    # split on the planned meal's starting score and see whether the gap survives.
+    lines += [
+        "### Why it runs that way: headroom, and where it comes from",
+        "",
+    ]
+    if not gated.empty and not breached.empty and not clear.empty:
+        gated = gated.copy()
+        gated["breached"] = gated["planned_breached_hard_sodium"].astype(int)
+        gated["stratum"] = (
+            gated["score_before"].le(HEADROOM_SPLIT).map({True: "low", False: "high"})
+        )
+        low = gated[gated["stratum"] == "low"]
+        high = gated[gated["stratum"] == "high"]
+
+        lines += [
+            "The starting score explains it. A hard-rule breach multiplies the composite",
+            "score by `hard_violation_factor` (0.10) per violation, so a meal that breaches",
+            "the sodium ceiling is *mechanically* pushed to the bottom of the starting-score",
+            "distribution -- it cannot be anywhere else.",
+            "",
+            "| Planned meal | n | Mean `score_before` | Median | Max |",
+            "|---|---|---|---|---|",
+            f"| breached the ceiling | {len(breached)} | {breached['score_before'].mean():.4f} "
+            f"| {breached['score_before'].median():.4f} | {breached['score_before'].max():.4f} |",
+            f"| already under it | {len(clear)} | {clear['score_before'].mean():.4f} "
+            f"| {clear['score_before'].median():.4f} | {clear['score_before'].max():.4f} |",
+            "",
+            f"Every breached meal starts below {breached['score_before'].max():.3f}. So the raw 50%-vs-30%",
+            "comparison is not breached-versus-clean, it is *bottom-of-the-range* versus",
+            "*whole-range*. Splitting on the starting score instead:",
+            "",
+            "| `score_before` stratum | n | Validity | Mean gain | Edits |",
+            "|---|---|---|---|---|",
+        ]
+        for label, subset in ((f"low (<= {HEADROOM_SPLIT:.3f})", low), ("high", high)):
+            if subset.empty:
+                continue
+            gain = (subset["score_after"] - subset["score_before"]).mean()
+            lines.append(
+                f"| {label} | {len(subset)} | {_pct(subset['valid'].mean())} "
+                f"| +{gain:.3f} | {subset['n_changed'].mean():.2f} |"
+            )
+
+        lines += ["", "And within the low stratum, where both groups actually live:", ""]
+        lines += ["| Planned meal | n | Validity | Mean gain |", "|---|---|---|---|"]
+        for label, flag in (("breached", 1), ("already under", 0)):
+            subset = low[low["breached"] == flag]
+            if subset.empty:
+                continue
+            gain = (subset["score_after"] - subset["score_before"]).mean()
+            lines.append(
+                f"| {label} | {len(subset)} | {_pct(subset['valid'].mean())} | +{gain:.3f} |"
+            )
+
+        low_b = low[low["breached"] == 1]["valid"].mean() if (low["breached"] == 1).any() else 0.0
+        low_c = low[low["breached"] == 0]["valid"].mean() if (low["breached"] == 0).any() else 0.0
+        lines += [
+            "",
+            "**The gap disappears.** Controlling for the starting score, breached meals are",
+            f"valid {_pct(low_b)} of the time and clean ones {_pct(low_c)} -- indistinguishable. The",
+            "sodium ceiling is not causing the difference; the starting score is, and the",
+            "ceiling merely determines which side of it a meal lands on.",
+            "",
+            "**The mechanism is the validity term's shape.** It is",
+            "`lambda_validity * max(0, target - surrogate)`, so its magnitude scales with",
+            "how far below target the meal sits. A meal starting near zero generates strong",
+            "optimisation pressure and can afford to outspend the sparsity penalty; the",
+            "stratum table shows it buying more edits and gaining far more. A meal already",
+            "in the mediocre middle generates weak pressure, cannot justify the edits, and",
+            "stalls short. That is the same population as bucket B, seen from another angle.",
+            "",
+            "The pattern is not specific to sodium-gated profiles. Across all",
+            f"{len(fs)} FoodSense cases the same split gives "
+            f"{_pct(fs[fs['score_before'] <= HEADROOM_SPLIT]['valid'].mean())} validity below the "
+            f"line against {_pct(fs[fs['score_before'] > HEADROOM_SPLIT]['valid'].mean())} above it.",
+            "",
+            "**Open question, and it is a real one.** `score_before` is a composite:",
+            "`soft_score * 0.1^n_hard`. A low value can mean a repairable hard violation or",
+            "a genuinely poor meal, and these rows cannot separate them because the planned",
+            "meal's *soft* score is not recorded -- only the composite. So the finding above",
+            "establishes that the sodium gap is a starting-score artefact, but not how much",
+            "of the low stratum's advantage is the mechanical restoration of a crushed score",
+            "versus real nutritional improvement. One extra column (`soft_score_before`)",
+            "would settle it; it is noted for the Phase-6 regeneration rather than bolted on",
+            "here, since these artefacts are frozen.",
+            "",
+        ]
+    else:
+        lines += ["Not answerable from this run: one side of the split is empty.", ""]
+
     lines += ["## 4. Is validity uneven across age groups?", ""]
     lines += [
         "| Age group | Cases | Validity | Safe | Mean soft score after |",
