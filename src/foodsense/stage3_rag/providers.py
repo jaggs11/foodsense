@@ -401,6 +401,15 @@ class AnthropicProvider(_RetryingLLMProvider):
     #: frontier reasoning buys nothing here; what it needs is a model that is not
     #: about to be retired. Sonnet 5 does not take a temperature, which is why the
     #: guard above exists and is exercised by the shipped default.
+    #:
+    #: **Docs-verified, not runtime-verified.** This id was checked against the
+    #: published model list on the date above and the request shape is pinned by
+    #: stubbed-client tests, but no live call has been made from this repository --
+    #: there is no API key in the development environment. The offline template
+    #: path is unaffected and is what every command, test and experiment uses. If
+    #: a live check is wanted, set ANTHROPIC_API_KEY and run
+    #: `foodsense recommend --provider anthropic`; a wrong id would surface as a
+    #: 404 recorded in `trace.warnings`, with the template answer still returned.
     DEFAULT_MODEL = "claude-sonnet-5"
 
     def __init__(self, model: str = DEFAULT_MODEL, temperature: float = 0.2) -> None:

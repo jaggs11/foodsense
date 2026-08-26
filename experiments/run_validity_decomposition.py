@@ -64,22 +64,49 @@ def _pct(value: float) -> str:
 
 
 def classify(row, target: float) -> str:
-    """Why this row was invalid. Assumes ``valid == 0``."""
+    """Which of the three buckets this invalid case falls in.
+
+    Exhaustive and mutually exclusive by construction: the hard-violation test is
+    taken first because a surviving violation multiplies the score toward zero and
+    makes the surrogate comparison meaningless; after that, the only question is
+    whether the surrogate agreed the meal was short.
+    """
     if row["n_hard_violations"] > 0:
-        return "hard_violation_survived"
+        return "A_unrepairable_hard_violation"
     if row["surrogate_after"] >= target:
-        return "surrogate_boundary_error"
-    return "optimiser_fell_short"
+        return "C_calibration_gap"
+    return "B_soft_score_shortfall"
 
 
-REASON_LABELS = {
-    "hard_violation_survived": "A hard safety rule was still broken",
-    "surrogate_boundary_error": "The surrogate said the target was met; the rules disagreed",
-    "optimiser_fell_short": "The optimiser knew it was short and could not close the gap",
+BUCKETS = (
+    "A_unrepairable_hard_violation",
+    "B_soft_score_shortfall",
+    "C_calibration_gap",
+)
+
+BUCKET_LABELS = {
+    "A_unrepairable_hard_violation": (
+        "**A. Unrepairable hard violation** -- a hard-safety rule is still broken, so "
+        "the score is multiplied toward zero and cannot clear the target at any weight"
+    ),
+    "B_soft_score_shortfall": (
+        "**B. Genuine soft-score shortfall** -- the surrogate *and* the rule engine "
+        "agree the meal is below target. The optimiser knew, and could not close it"
+    ),
+    "C_calibration_gap": (
+        "**C. Calibration gap** -- the surrogate's final estimate cleared the target "
+        "while the rule engine's score did not. The optimiser could not tell"
+    ),
 }
+
+#: Above this share, bucket C stops being a rounding detail and starts being a
+#: measurement artefact worth remedying. Fixed before the numbers were seen.
+MATERIAL_BUCKET_C = 0.20
 
 
 def render(data, target: float) -> str:
+    import pandas as pd
+
     stamp = datetime.now(UTC).isoformat(timespec="seconds")
     fs = data[data["method"] == "foodsense_de"]
 
@@ -131,80 +158,147 @@ def render(data, target: float) -> str:
     gap_pp = (by_group.max() - by_group.min()) * 100
 
     lines += [
-        "## 2. FoodSense's invalid cases, by reason",
+        "## 2. FoodSense's invalid cases, in three buckets",
         "",
-        "Every FoodSense case that failed to reach the target, sorted into why.",
+        "Every FoodSense-DE case that failed to reach the target falls in exactly one.",
+        "The distinction is not cosmetic: only **B** is an optimiser result. **A** is a",
+        "deliberate safety decision showing up in the validity column, and **C** is a",
+        "Stage-1 calibration defect that no weight in `configs/pipeline.yaml` addresses.",
+        "",
+        "`surrogate_after` is the surrogate's estimate of the meal the optimiser",
+        "returned. It is bit-identical to the `terms.suitability` the search actually",
+        "stopped on -- verified on all three demo scenarios -- and is recomputed rather",
+        "than threaded through so that the same column means the same thing for the",
+        "baselines, which do not produce objective terms at all.",
         "",
     ]
 
     invalid = fs[fs["valid"] == 0].copy()
     if invalid.empty:
         lines += ["No invalid cases in this run.", ""]
+        share_c = 0.0
     else:
-        invalid["reason"] = invalid.apply(lambda r: classify(r, target), axis=1)
-        counts = invalid["reason"].value_counts()
+        invalid["bucket"] = invalid.apply(lambda r: classify(r, target), axis=1)
+        counts = invalid["bucket"].value_counts()
+        share_c = float(counts.get("C_calibration_gap", 0)) / len(invalid)
+
         lines += [
-            "| Reason | Cases | Share of invalid | Share of all cases |",
+            "| Bucket | Cases | Share of invalid | Share of all 300 |",
             "|---|---|---|---|",
         ]
-        for reason in REASON_LABELS:
-            n = int(counts.get(reason, 0))
+        for bucket in BUCKETS:
+            n = int(counts.get(bucket, 0))
             lines.append(
-                f"| {REASON_LABELS[reason]} | {n} | {_pct(n / len(invalid))} "
+                f"| {BUCKET_LABELS[bucket]} | {n} | {_pct(n / len(invalid))} "
                 f"| {_pct(n / len(fs))} |"
             )
         lines.append(
             f"| **total invalid** | {len(invalid)} | 100% | {_pct(len(invalid) / len(fs))} |"
         )
 
-        survived = int(counts.get("hard_violation_survived", 0))
-        boundary = int(counts.get("surrogate_boundary_error", 0))
-        short = int(counts.get("optimiser_fell_short", 0))
-        gap = invalid[invalid["reason"] == "surrogate_boundary_error"]
+        # --- by age group --------------------------------------------------
+        lines += [
+            "",
+            "### By age group",
+            "",
+            "| Age group | Cases | Invalid | A | B | C |",
+            "|---|---|---|---|---|---|",
+        ]
+        for group in AGE_ORDER:
+            group_all = fs[fs["age_group"] == group]
+            group_invalid = invalid[invalid["age_group"] == group]
+            if group_all.empty:
+                continue
+            if group_invalid.empty:
+                lines.append(f"| {group} | {len(group_all)} | 0 | - | - | - |")
+                continue
+            g = group_invalid["bucket"].value_counts()
+            cells = " | ".join(
+                f"{int(g.get(b, 0))} ({_pct(int(g.get(b, 0)) / len(group_invalid))})"
+                for b in BUCKETS
+            )
+            lines.append(
+                f"| {group} | {len(group_all)} | {len(group_invalid)} "
+                f"({_pct(len(group_invalid) / len(group_all))}) | {cells} |"
+            )
+        lines.append("")
 
-        lines += ["", "### Reading it", ""]
-        if survived == 0:
+        # --- bucket C gap distribution -------------------------------------
+        gap_rows = invalid[invalid["bucket"] == "C_calibration_gap"]
+        if not gap_rows.empty:
+            gaps = (gap_rows["surrogate_after"] - gap_rows["score_after"]).to_numpy()
             lines += [
-                "**No FoodSense case is invalid because it was left unsafe.** The safety rate",
-                "is 100%, so the multiply-toward-zero factor never fires here. Whatever else",
-                "the validity number is, it is not hiding unrepaired hazards -- which also",
-                "means the hypothesis that invalid cases are cases the optimiser could not",
-                "repair past a hard ceiling is **false as stated**. It always repairs. What a",
-                "hard ceiling costs is measured in section 3 instead, where it belongs: not in",
-                "surviving violations, but in what has to be given up to avoid them.",
+                "### Bucket C: how big is the gap when it happens",
+                "",
+                "`surrogate_after - score_after`, for bucket-C cases only. The sign is",
+                "positive by definition; what matters is the size, because a surrogate that",
+                "overshoots by 0.002 is a different problem from one that overshoots by 0.08.",
+                "",
+                "| n | Mean | Median | Min | 90th pct | Max |",
+                "|---|---|---|---|---|---|",
+                f"| {len(gaps)} | {gaps.mean():.4f} | {float(pd.Series(gaps).median()):.4f} "
+                f"| {gaps.min():.4f} | {float(pd.Series(gaps).quantile(0.9)):.4f} "
+                f"| {gaps.max():.4f} |",
+                "",
+                "For scale: the surrogate's held-out residual RMSE against the clean",
+                "rule-engine score is 0.0306 (see",
+                "[`surrogate_boundary.md`](surrogate_boundary.md)). Gaps at or below that are",
+                "the model behaving as measured; gaps well above it would be something else.",
+                "",
+            ]
+
+        # --- conditional conclusion ----------------------------------------
+        lines += ["### Reading it", ""]
+        a_n = int(counts.get("A_unrepairable_hard_violation", 0))
+        if a_n == 0:
+            lines += [
+                "**Bucket A is empty.** No FoodSense case is invalid because it was left",
+                "unsafe -- the safety rate is 100%, so the multiply-toward-zero factor never",
+                "fires. The hypothesis that invalid cases are ones the optimiser could not",
+                "repair past a hard ceiling is therefore **false as stated**: it always",
+                "repairs. What a hard ceiling costs is measured in section 3 instead, where",
+                "it belongs -- not in surviving violations, but in what must be given up to",
+                "avoid them.",
                 "",
             ]
         else:
             lines += [
-                f"**{survived} cases are invalid because a hard rule survived.** That",
-                "contradicts the 100% safe rate in the comparison table and needs",
-                "investigating before either number is cited.",
+                f"**Bucket A holds {a_n} cases.** That contradicts the 100% safe rate in the",
+                "comparison table and needs investigating before either number is cited.",
                 "",
             ]
 
-        if boundary:
-            mean_gap = float((gap["surrogate_after"] - gap["score_after"]).mean())
+        if share_c >= MATERIAL_BUCKET_C:
             lines += [
-                f"**{boundary} of {len(invalid)} invalid cases ({_pct(boundary / len(invalid))}) are",
-                "surrogate boundary error.** In these the optimiser's validity term reached",
-                "zero -- by its own estimate the meal met the target -- and the rule engine then",
-                f"scored it below. The mean gap is {mean_gap:.3f}, i.e. the surrogate is",
-                "systematically a little optimistic right where the decision is made.",
+                f"**Bucket C is material: {_pct(share_c)} of invalid cases.** These are meals the",
+                "optimiser could not tell were invalid. Its validity term",
+                "`max(0, target - surrogate)` had already reached zero, so the objective was",
+                "flat in that direction and there was no gradient left to close the",
+                "rule-engine gap -- the search was not failing to climb, there was nothing to",
+                "climb. Raising `lambda_validity` cannot touch this bucket, because the term",
+                "it multiplies is already zero.",
                 "",
-                "This is a Stage-1 accuracy problem, not a Stage-2 one. Raising",
-                "`lambda_validity` cannot fix it: the term is already at zero for these cases,",
-                "so the weight multiplying it is irrelevant. Narrowing it needs a better",
-                "surrogate, or a validity term that keeps pushing past the target rather than",
-                "flattening at it.",
+                "At this share the headline validity figure is partly a measurement artefact",
+                "rather than an optimiser result, and a remedy derived from the model's own",
+                "residuals is warranted.",
                 "",
             ]
-        if short:
+        else:
             lines += [
-                f"**{short} cases ({_pct(short / len(invalid))}) are the optimiser genuinely falling",
-                "short** -- it knew the meal was below target and could not close the gap",
-                "within its evaluation budget and its distance and sparsity penalties. This is",
-                "the only bucket `lambda_validity` moves, and",
-                "[`lambda_sweep.md`](lambda_sweep.md) measures how far.",
+                f"**Bucket C is small: {_pct(share_c)} of invalid cases.** The mechanism is real --",
+                "the validity term is identically flat above the target, so a surrogate that",
+                "clears it strands the search with nothing to climb -- but it accounts for",
+                "little of the invalid population. The surrogate's held-out residual against",
+                "the clean rule score is 0.0306 RMSE, roughly half the reported figure (which",
+                "is measured against the deliberately noised label), and at that accuracy it",
+                "usually enters the flat region on the correct side of the line.",
+                "",
+                "**So the validity number stands as an honest optimiser result.** It is not",
+                "being depressed by a calibration defect, and it should not be adjusted by a",
+                "remedy aimed at one. The bulk of the invalid cases are bucket B: meals the",
+                "optimiser knew were short and would not buy the edits to fix, which is the",
+                "trade `lambda_validity` governs and",
+                "[`lambda_sweep.md`](lambda_sweep.md) measures.",
                 "",
             ]
 
