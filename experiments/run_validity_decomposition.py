@@ -345,12 +345,18 @@ def render(data, target: float) -> str:
         if breached.empty or clear.empty:
             lines += ["One side of the split is empty, so no comparison is possible.", ""]
         else:
+            # Signed: positive means meals that started clean end up valid more
+            # often, i.e. the ceiling costs validity. Negative means the reverse,
+            # which is not the same finding as "no effect" and must not be
+            # reported as one.
             delta_pp = (clear["valid"].mean() - breached["valid"].mean()) * 100
+            smaller_arm = min(len(breached), len(clear))
             if delta_pp >= MATERIAL_GAP_PP:
                 lines += [
-                    "**The ceiling does cost validity.** Among profiles carrying a hard sodium",
-                    f"ceiling, meals that started over it are valid {_pct(breached['valid'].mean())} of the time",
-                    f"against {_pct(clear['valid'].mean())} for meals that started under it -- a gap of",
+                    "**The ceiling does cost validity.** Among profiles carrying a hard",
+                    f"sodium ceiling, meals that started over it are valid "
+                    f"{_pct(breached['valid'].mean())} of the time against",
+                    f"{_pct(clear['valid'].mean())} for meals that started under it -- a gap of",
                     f"{delta_pp:.0f} percentage points. Getting under the ceiling means removing or",
                     "shrinking the salty items, and those items are usually also carrying the",
                     "protein and the energy, so the meal loses ground on the soft rules while",
@@ -362,14 +368,35 @@ def render(data, target: float) -> str:
                     "measure of how well the optimiser searches.",
                     "",
                 ]
+            elif delta_pp <= -MATERIAL_GAP_PP:
+                lines += [
+                    "**The hypothesis is refuted, and not by a null result -- the effect runs the",
+                    "other way.** Meals that started *over* the ceiling are valid",
+                    f"{_pct(breached['valid'].mean())} of the time against {_pct(clear['valid'].mean())} for meals that started",
+                    f"under it. The breached group does {abs(delta_pp):.0f} percentage points *better*, not worse.",
+                    "",
+                    "The likely reason is visible in the table: a meal that breaches a sodium",
+                    "ceiling is typically a dense, processed, calorie-heavy one, and the edit that",
+                    "fixes it -- dropping or shrinking the salty item -- frees both mass and",
+                    "calories for something the soft rules reward. The ceiling forces an edit that",
+                    "the goal rules wanted anyway. A meal already under the ceiling has no such",
+                    "forced edit and no such windfall.",
+                    "",
+                    f"State the caveat with it: the smaller arm holds {smaller_arm} cases, so this is a",
+                    "direction, not an effect size. What it does establish is that the convenient",
+                    "story -- that the hard ceiling is quietly depressing the headline validity --",
+                    "is not merely unsupported, it is contradicted by the sign. That story is not",
+                    "being told.",
+                    "",
+                ]
             else:
                 lines += [
                     "**The ceiling does not measurably cost validity here.** Meals that started",
                     f"over the ceiling are valid {_pct(breached['valid'].mean())} of the time against",
                     f"{_pct(clear['valid'].mean())} for those that started under it, a difference of",
-                    f"{delta_pp:.0f} percentage points -- inside what this sample can resolve. The",
-                    "convenient explanation is available and the data does not support it, so it",
-                    "is not being made.",
+                    f"{delta_pp:+.0f} percentage points -- inside what this sample can resolve",
+                    f"(the smaller arm holds {smaller_arm} cases). The convenient explanation is",
+                    "available and the data does not support it, so it is not being made.",
                     "",
                 ]
 
@@ -419,12 +446,16 @@ def render(data, target: float) -> str:
         "It does not turn a low validity number into a high one. FoodSense reaches the",
         f"target in {_pct(fs['valid'].mean())} of cases and that is the number to quote.",
         "",
-        "What the decomposition establishes is what would have to change to move it, and",
-        "the answer is mostly not the optimiser. The invalid cases are overwhelmingly",
-        "meals the search either believed it had finished (a Stage-1 problem) or could not",
-        "improve without editing more of the plate than the sparsity term allows (a",
-        "deliberate trade, measured in [`lambda_sweep.md`](lambda_sweep.md)). None of them",
-        "are meals left unsafe.",
+        "What the decomposition establishes is *which* lever would move it. Nine invalid",
+        "cases in ten are bucket B -- meals the search knew were short and would not buy",
+        "the edits to close, which is the trade `lambda_validity` governs and",
+        "[`lambda_sweep.md`](lambda_sweep.md) measures. One in ten is bucket C, a Stage-1",
+        "calibration limit that no objective weight can reach. None at all are meals left",
+        "unsafe.",
+        "",
+        "So the number is not being held down by a defect. It is being held down by a",
+        "deliberate preference for small edits, and that preference is a setting with a",
+        "measured cost rather than a limitation.",
         "",
     ]
     return "\n".join(lines)
