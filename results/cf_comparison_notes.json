@@ -1,23 +1,23 @@
 {
-  "foodsense_de": {
-    "plateaued_without_validity": 227,
-    "valid_and_plateaued": 63,
-    "evaluation_budget": 10
-  },
-  "wachter_restricted": {
-    "plateaued_without_validity": 159,
-    "valid_and_plateaued": 119,
-    "evaluation_budget": 22
-  },
-  "wachter": {
-    "plateaued_without_validity": 186,
-    "valid_and_plateaued": 89,
-    "evaluation_budget": 25
-  },
   "dice_genetic": {
     "evaluation_budget_exhausted": 300
   },
   "dice_random": {
-    "evaluation_budget_exhausted": 116
+    "evaluation_budget_exhausted": 112
+  },
+  "wachter": {
+    "plateaued_without_validity": 184,
+    "valid_and_plateaued": 102,
+    "evaluation_budget": 14
+  },
+  "wachter_restricted": {
+    "plateaued_without_validity": 185,
+    "valid_and_plateaued": 106,
+    "evaluation_budget": 9
+  },
+  "foodsense_de": {
+    "evaluation_budget": 7,
+    "plateaued_without_validity": 207,
+    "valid_and_plateaued": 86
   }
 }
