@@ -1,0 +1,28 @@
+# results/ artefact manifest, taken at tag phase-4.5
+# commit: af95103be2572b6bbe504b897972162460f23a68
+#
+# Every evaluated number this project reports lives in one of these files.
+# Phase 6 regenerates them and diffs against this manifest, so a silent
+# clobber becomes a visible one. Regenerate the manifest ONLY when a change
+# has been classified and accepted.
+#
+# Verify:  python -c "import hashlib,pathlib;[print('OK' if hashlib.sha256(pathlib.Path(l.split('  ',1)[1].strip()).read_bytes()).hexdigest()==l.split('  ',1)[0] else 'CHANGED '+l.split('  ',1)[1].strip()) for l in open('results/MANIFEST.sha256') if not l.startswith('#') and l.strip()]"
+#
+3afc7667f6ad6691d8221ac65533ce682ff8539de6823ba13ca2651b21d2bd2d  results/cf_comparison.csv
+42bc6cfea2aaac67ca84dc14f7f9206d892fe844e5f242c5c22991df8ac3707c  results/cf_comparison.md
+8fdbfa0d5fd973009d6712f54db560ef14e7a29ddda5efd991c38313ee7489d1  results/cf_comparison_notes.json
+dde8117358d3a7650eb0fd4d7b1169270db9452e4b45f8eb028642b8f5c75daa  results/cf_comparison_raw.csv
+9efa31d158759ca046b37c22c40a329a9454b514aef79077202a8c84711162c8  results/dataset_comparison.csv
+51c62b825c79617083e60cbc44af748d8d87bfc3dc88f7b533804e5da8f0aba0  results/dataset_comparison.md
+ddbbfa50b430109900235534f5cfda59924d09c29cba959e8b95cd9bdf6e3721  results/figures/cf_comparison.png
+ddff55f719d0b2bfcd24a86f65cd2b5bad79405a538d0a02a055a455a9573f7d  results/figures/lambda_sweep.png
+45e10a4fca4a2eaa561c462ba895b675d53818060a076360686f38df02d35c91  results/lambda_sweep.csv
+42de705093931dcad197ec706de09d9d2ec582b3cdd6e198f308ac70ac7778bf  results/lambda_sweep.md
+38a1b249d635519cc7f623f50013d02c51a4c13b13630550c168a98c9b823ffe  results/README.md
+891052e1691b8042946d5333259cdea6e1ac1f3dfcaaffebeb53e9789777c60e  results/surrogate_boundary.json
+f6b7ac951fd7ab50f9988ff8a77df67fad29795c25f26ec949282892b4aff9c9  results/surrogate_boundary.md
+2ba5ef8ee137bc84827440cc8c913b35746f2d392b147a5e24c19ce6d5e7e2b8  results/validity_decomposition.csv
+7475e60f96477f10059d3745e0fa0df37f19ff42dc400df15643b6cef6349f45  results/validity_decomposition.md
+f69bee1026c78b2f546b580fe89e1fb4694377174751cb2826b9752dd870522b  results/validity_decomposition_cases.csv
+c47f9ef642942096511d33cb48ed5f2453f8782204bedc1bce75e8edc8ccb9eb  results/verification_eval.json
+a9d79f87f0882722a38bce8ba1c356a781c5a940eda5e7186a89ae12985ee964  results/verification_eval.md

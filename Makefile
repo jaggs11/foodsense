@@ -61,11 +61,27 @@ test:
 test-fast:
 	$(PY) -m pytest -m "not slow"
 
+# Regenerates every file in results/. Strictly sequential and strictly ordered:
+# run_validity_decomposition.py reads the raw rows run_cf_eval.py writes, so it
+# cannot run first, and running these in parallel is what produced an orphaned
+# worker holding a stale CSV snapshot that nearly clobbered 300 committed rows.
+#
+# Expect roughly 90 minutes. Most of it is DiCE-genetic, which spends its whole
+# evaluation budget without converging by construction; see the note in
+# results/cf_comparison.md.
 eval:
 	$(PY) experiments/run_cf_eval.py
+	$(PY) experiments/run_validity_decomposition.py
+	$(PY) experiments/run_lambda_sweep.py
+	$(PY) experiments/run_surrogate_boundary.py
 	$(PY) experiments/run_verification_eval.py
 	$(PY) experiments/run_dataset_comparison.py
 	$(PY) experiments/run_llm_benchmark.py
+	@echo "Now check results/ against its manifest:  make verify-results"
+
+# Every evaluated number lives in results/. This says whether any of them moved.
+verify-results:
+	$(PY) scripts/verify_results.py
 
 frontend:
 	cd frontend && npm install && npm run build

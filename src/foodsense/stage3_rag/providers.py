@@ -324,12 +324,48 @@ def parse_response(raw: str, request: TranslationRequest, provider: str) -> Prov
     )
 
 
-#: Wall-clock ceiling on a single provider call. Every network path must have
-#: one: a demo that hangs because the venue's Wi-Fi is captive-portalled is worse
-#: than a demo that quietly uses the offline template, and without an explicit
-#: timeout the SDKs will wait far longer than anyone standing in front of an
-#: audience will tolerate.
-PROVIDER_TIMEOUT_S = 20.0
+#: Wall-clock ceilings on a provider call. Every network path must have one: a
+#: demo that hangs because the venue Wi-Fi is captive-portalled is worse than a
+#: demo that quietly uses the offline template, and without explicit timeouts the
+#: SDKs wait far longer than anyone standing in front of an audience will
+#: tolerate.
+#:
+#: Split by phase rather than a single number, because the phases fail for
+#: different reasons and only one of them is common. A dead or captive network
+#: fails at **connect**, which is the case worth bounding tightly -- measured at
+#: 20.1s with a single 20s timeout against a blackholed host, which is a very long
+#: silence on stage. A server that completes the handshake and then stalls fails
+#: at **read**, which is rarer and gets more room because a genuine generation
+#: legitimately takes a few seconds and cutting it off would cause a spurious
+#: fallback.
+PROVIDER_CONNECT_TIMEOUT_S = 3.0
+PROVIDER_READ_TIMEOUT_S = 8.0
+
+#: Single-value timeout for transports that cannot express the split (Ollama's
+#: urllib path). Matched to the read budget.
+PROVIDER_TIMEOUT_S = PROVIDER_READ_TIMEOUT_S
+
+
+def _sdk_timeout():
+    """Per-phase timeout in whatever HTTP stack the installed SDK is built on.
+
+    Both official SDKs currently sit on ``httpx2``; importing the wrong module
+    here would hand the client a timeout object it does not recognise. Resolved
+    at call time and degraded to a plain float if neither import works, because a
+    slightly coarser timeout is a far better outcome than a provider that cannot
+    be constructed at all.
+    """
+    for module_name in ("httpx2", "httpx"):
+        try:
+            module = __import__(module_name)
+        except ImportError:
+            continue
+        return module.Timeout(
+            PROVIDER_READ_TIMEOUT_S,
+            connect=PROVIDER_CONNECT_TIMEOUT_S,
+            pool=PROVIDER_CONNECT_TIMEOUT_S,
+        )
+    return PROVIDER_READ_TIMEOUT_S
 
 
 class _RetryingLLMProvider(LLMProvider):
@@ -445,7 +481,7 @@ class AnthropicProvider(_RetryingLLMProvider):
 
         # max_retries=0: the SDK's own retry budget would multiply the ceiling
         # above, and this class already owns the retry policy.
-        client = anthropic.Anthropic(timeout=PROVIDER_TIMEOUT_S, max_retries=0)
+        client = anthropic.Anthropic(timeout=_sdk_timeout(), max_retries=0)
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": 4096,
@@ -488,7 +524,7 @@ class OpenAIProvider(_RetryingLLMProvider):
             if not attempt
             else (prompt + "\n\nYour previous reply was not valid JSON. Reply with JSON only.")
         )
-        response = OpenAI(timeout=PROVIDER_TIMEOUT_S, max_retries=0).chat.completions.create(
+        response = OpenAI(timeout=_sdk_timeout(), max_retries=0).chat.completions.create(
             model=self.model,
             temperature=self.temperature,
             response_format={"type": "json_object"},

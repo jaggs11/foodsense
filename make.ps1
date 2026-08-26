@@ -11,7 +11,8 @@
 param(
     [Parameter(Position = 0)]
     [ValidateSet('help', 'setup', 'data', 'train', 'demo', 'test', 'test-fast', 'eval',
-                 'frontend', 'api', 'serve', 'lint', 'format', 'docker-build', 'docker-up', 'clean')]
+                 'frontend', 'api', 'serve', 'lint', 'format', 'verify-results',
+                 'docker-build', 'docker-up', 'clean')]
     [string]$Target = 'help'
 )
 
@@ -65,12 +66,20 @@ FoodSense targets (./make.ps1 <target>):
     'test' { Require-Venv; & $Py -m pytest }
     'test-fast' { Require-Venv; & $Py -m pytest -m "not slow" }
     'eval' {
+        # Strictly sequential and strictly ordered: run_validity_decomposition
+        # reads the rows run_cf_eval writes. Roughly 90 minutes, most of it
+        # DiCE-genetic exhausting its budget without converging by construction.
         Require-Venv
         & $Py experiments/run_cf_eval.py
+        & $Py experiments/run_validity_decomposition.py
+        & $Py experiments/run_lambda_sweep.py
+        & $Py experiments/run_surrogate_boundary.py
         & $Py experiments/run_verification_eval.py
         & $Py experiments/run_dataset_comparison.py
         & $Py experiments/run_llm_benchmark.py
+        Write-Host 'Now check results/ against its manifest:  ./make.ps1 verify-results'
     }
+    'verify-results' { Require-Venv; & $Py scripts/verify_results.py }
     'frontend' {
         Push-Location frontend
         try { npm install; npm run build } finally { Pop-Location }
