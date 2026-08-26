@@ -458,6 +458,20 @@ Everything is seeded and every artefact is regenerable from a clean clone.
 | Retrain Stage 1 | `make train` |
 | Environment | Python 3.12, Node 24 (UI only); exact pins in `requirements.txt` and `frontend/package-lock.json` |
 
+Clean-clone check, run before each release — and note the last two steps, which
+exist because a defect once hid in exactly the gap between them:
+
+```bash
+git clone <url> fresh && cd fresh
+python -m venv .venv && .venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pip install -e .
+.venv/Scripts/python.exe -m pytest                       # 543 passed
+.venv/Scripts/python.exe -m foodsense.cli demo           # all three scenarios, offline
+cd frontend && npm install && npm run build && cd ..
+cd /some/other/directory                                 # <- deliberately not the clone
+<path-to>/fresh/.venv/Scripts/python.exe -m foodsense.cli serve --no-open
+```
+
 Wall-clock and generation timestamps are the only things that legitimately differ
 between two runs of the same code — `verify_results.py` knows that and ignores
 them. Everything else is expected to be byte-identical, and when it was not, that
