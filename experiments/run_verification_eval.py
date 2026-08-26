@@ -544,6 +544,19 @@ def render(
             f"| **subtotal** | {r_n} | **{_pct(r_detected, r_n)}** | - "
             f"| **{_pct(r_reached, r_n)}** |"
         )
+        lines += [
+            "",
+            "**Read that subtotal with the same suspicion as B1's.** It is a pooled figure",
+            "over faults of deliberately different difficulty, so its value is partly a",
+            "statement about how many rows were put in each band rather than about the",
+            "verifier. The marginal drift band is in there precisely because much of it",
+            "cannot be caught at a 10% meal-level tolerance, and it drags the pool down the",
+            "same way the by-construction faults dragged B1's up.",
+            "",
+            "The numbers that actually mean something are the per-fault rows: the detection",
+            "curve across the three drift magnitudes below, and `reintroduced_hazard`, which",
+            "is the fault this extension exists to catch and is not a pooled number at all.",
+        ]
 
     marginal = next((o for o in faults if o.fault == "quantity_drift_marginal"), None)
     near = next((o for o in faults if o.fault == "quantity_drift_near"), None)

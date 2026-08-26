@@ -180,25 +180,35 @@ Headline, over 300 sampled cases (100 per age group) — full table in
 
 | Method | Usable validity | Safe | Availability violations | Safety violations | norm-L1 | Edits |
 |---|---|---|---|---|---|---|
-| **FoodSense-DE** | 22% | **100%** | **0%** | **0%** | **0.639** | 2.90 |
-| Wachter (same space) | 40% | 64% | 0% | 36% | 0.948 | 5.90 |
-| Wachter-style | 7% | 67% | 56% | 33% | 0.897 | 5.95 |
-| DiCE-random | 17% | 76% | 35% | 24% | 0.986 | 2.05 |
+| **FoodSense-DE** | 29% | **100%** | **0%** | **0%** | **0.796** | 3.03 |
+| Wachter (same space) | 34% | 65% | 0% | 35% | 0.927 | 5.78 |
+| Wachter-style | 8% | 68% | 54% | 32% | 0.847 | 5.82 |
+| DiCE-random | 17% | 76% | 32% | 24% | 1.024 | 2.05 |
 | DiCE-genetic | 2% | 73% | 0% | 27% | 0.000 | 0.00 |
-| Greedy | 29% | 77% | 50% | 23% | 0.887 | 3.84 |
+| Greedy | 29% | 77% | 50% | 23% | 0.884 | 3.83 |
 
 Across 300 cases FoodSense never once recommended a food the user did not have and
-never once left a safety violation in place, and it made the smallest edit of any
-method that edits at all. It is also the only row where validity and *usable*
-validity are the same number — the others reach the nutrition target substantially
-by reaching for ingredients that are not in the kitchen.
+never once left a safety violation in place, and it moved the fewest grams of any
+method that edits at all (norm-L1 0.796). DiCE-random touches fewer items — 2.05
+against 3.03 — but moves more mass when it does, which is the honest way to state
+it. FoodSense is also the only row where validity and *usable* validity are the
+same number; the others reach the nutrition target substantially by reaching for
+ingredients that are not in the kitchen.
 
 It reaches the target less often than an unconstrained search does, and
 [`results/cf_comparison.md`](results/cf_comparison.md) isolates why: a same-space
-ablation with the safety and sparsity terms removed doubles validity while producing
-36% safety violations and twice the edits. Validity is a dial —
-`lambda_validity` moves it from 12% to 58% across its measured sweep. Safety is not
-a setting.
+ablation with the safety and sparsity terms removed buys a few points of validity
+while producing 35% safety violations and nearly twice the edits. Validity is a
+dial — [`results/lambda_sweep.md`](results/lambda_sweep.md) moves it from 2% to 66%
+across `lambda_validity`, with safety at 100% and availability violations at 0% at
+**every** setting. Validity is tunable; safety is not a setting.
+
+[`results/validity_decomposition.md`](results/validity_decomposition.md) sorts every
+invalid case into why. None are meals left unsafe. 90% are meals the search knew
+were short and would not buy the edits to close — the trade the sweep measures — and
+10% are a Stage-1 calibration limit, whose mean size (0.0293) is almost exactly the
+surrogate's measured held-out residual (0.0306, see
+[`results/surrogate_boundary.md`](results/surrogate_boundary.md)).
 
 ### Stage 4 catches what a generator gets wrong
 
@@ -206,13 +216,34 @@ a setting.
 an LLM actually produces, injected into Stage-3 output (every fault labelled as
 injected):
 
-| Injected fault | Cases | Detected | Reached the user |
+Reported in two blocks, because pooling them would overstate what is measured.
+Three faults are caught *by construction* — an id absent from the database fails a
+dictionary lookup, a form drawn from the complement of a food's allowed forms fails
+a membership test, a 1.9× claim against a 10% tolerance is outside it by arithmetic.
+Those rates say the guards are wired up, not that the verifier is capable:
+
+| Detected by construction | Cases | Detected | Reached the user |
 |---|---|---|---|
-| `hallucinated_food` | 90 | 100% | **0%** |
-| `impossible_form` | 90 | 100% | **0%** |
-| `inflated_claim` | 90 | 100% | **0%** |
-| `reintroduced_hazard` | 30 | 100% | **0%** |
-| `quantity_drift` | 90 | 94% | 6% |
+| `hallucinated_food` | 150 | 100% | **0%** |
+| `impossible_form` | 150 | 100% | **0%** |
+| `inflated_claim` | 150 | 100% | **0%** |
+
+The rest require the verifier to independently recompute the meal from USDA or
+re-derive a hazard from the food, its form and the profile's age. **This is the
+number that counts:**
+
+| Detected by re-derivation | Cases | Mean shift in meal total | Detected | Reached the user |
+|---|---|---|---|---|
+| `quantity_drift` 1.10–1.15× | 150 | 3.1% | 29% | 71% |
+| `quantity_drift` 1.15–1.30× | 150 | 6.5% | 71% | 29% |
+| `quantity_drift` 1.60–3.00× | 150 | 42.1% | 95% | **5%** |
+| `reintroduced_hazard` | 50 | — | 100% | **0%** |
+
+The drift bands are one mechanism at three magnitudes. The tolerance is 10% of the
+*meal total* while the fault multiplies *one item*, so the middle column is what to
+read against it — below 10%, a miss is the tolerance doing its job rather than the
+verifier failing. `reintroduced_hazard` is the fault the extension exists for: a
+generative step silently undoing a safety decision the optimiser already made.
 
 ### The three demo scenarios
 
