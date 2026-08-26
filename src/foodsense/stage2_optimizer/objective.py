@@ -231,8 +231,11 @@ class CounterfactualObjective:
             sparsity = config.lambda_sparsity * n_changed if self.use_sparsity else 0.0
             sparsity += config.lambda_form_preference * form_cost if self.use_sparsity else 0.0
 
-            n_hard = self.engine.count_hard_violations(meal, self.profile)
-            safety = config.big_penalty * n_hard if self.use_safety else 0.0
+            # Graded, not a count: a constant penalty cancels out when every
+            # candidate breaks the same rule, leaving the search no direction.
+            hard_score = self.engine.hard_violation_score(meal, self.profile)
+            n_hard = int(hard_score)
+            safety = config.big_penalty * hard_score if self.use_safety else 0.0
 
             out.append(
                 ObjectiveTerms(

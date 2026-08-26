@@ -234,6 +234,37 @@ class RuleEngine:
             if rule.severity == "hard" and rule.quantity in metrics
         )
 
+    def hard_violation_score(self, meal: Meal | list[MealItem], profile: UserProfile) -> float:
+        """How badly a meal breaks hard-safety rules, as a *graded* quantity.
+
+        A plain count is what the report shows, but it is the wrong thing for the
+        optimiser to minimise. If every candidate in the population breaks the same
+        one rule, a constant penalty cancels out of every comparison and the search
+        gets no signal at all about which candidate is closer to safe -- so it
+        optimises the remaining terms and returns something still unsafe. That is
+        exactly what happened on one evaluation case: a 2,071 mg sodium meal against
+        a 500 mg hard ceiling, where a safe answer existed in the pantry and the
+        search never found its way there.
+
+        Each broken rule therefore contributes ``1 + excess``, where ``excess`` runs
+        from 0 at the threshold toward 1 far past it. A meal at 600 mg now scores
+        strictly better than one at 2,071 mg, which is the gradient the search needs.
+        Structural violations (a choking hazard, an excluded food) have no magnitude
+        and contribute exactly 1.
+        """
+        items = meal.items if isinstance(meal, Meal) else list(meal)
+        score = float(len(self._structural_checks(items, profile)))
+
+        hard_rules = [r for r in self.rules_for(profile) if r.severity == "hard"]
+        if hard_rules:
+            metrics = meal_metrics(items, self.db)
+            for rule in hard_rules:
+                value = metrics.get(rule.quantity)
+                if value is None or rule.threshold.is_satisfied(value):
+                    continue
+                score += 1.0 + _excess(value, rule.threshold)
+        return score
+
     def count_hard_violations(self, meal: Meal | list[MealItem], profile: UserProfile) -> int:
         """Number of hard-safety rules this meal breaks.
 
@@ -270,6 +301,24 @@ class RuleEngine:
         """
         evaluation = self.evaluate(meal, profile)
         return evaluation.is_safe and evaluation.score >= target_score
+
+
+def _excess(value: float, threshold) -> float:
+    """How far past a bound a value sits, mapped into [0, 1).
+
+    Bounded on purpose: an unbounded excess would let one wildly-breached rule
+    dominate the count of *how many* rules are broken, and two hazards must stay
+    worse than one very salty meal.
+    """
+    if threshold.maximum is not None and value > threshold.maximum:
+        if threshold.maximum <= 0:
+            return 1.0
+        return 1.0 - threshold.maximum / value
+    if threshold.minimum is not None and value < threshold.minimum:
+        if threshold.minimum <= 0:
+            return 1.0
+        return 1.0 - max(value, 0.0) / threshold.minimum
+    return 0.0
 
 
 def _clip01(value: float) -> float:
