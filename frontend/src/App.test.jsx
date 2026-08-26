@@ -6,7 +6,7 @@
 // renders, the scenario dropdown populates, an unavailable provider is visibly
 // unavailable rather than silently missing, and a fallback is badged.
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -90,5 +90,92 @@ describe('App', () => {
     )
     render(<App />)
     await waitFor(() => expect(screen.getByText(/Request failed/)).toBeTruthy())
+  })
+})
+
+const TRACE = (label) => ({
+  profile: {},
+  planned_meal: { items: [] },
+  final_meal: { items: [{ food_id: '1', name: `${label} food`, form: 'whole', quantity_g: 10 }] },
+  stage1: {
+    suitability: 0.1,
+    runtime_s: 0.01,
+    model_name: 'lightgbm',
+    rule_evaluation: {
+      score: 0.1,
+      is_safe: false,
+      violations: [{ rule_id: `${label}.rule`, severity: 'hard', message: `${label} violation` }],
+    },
+  },
+  stage2: {
+    valid: false,
+    n_generations: 1,
+    n_evaluations: 10,
+    search_space_size: 3,
+    runtime_s: 0.01,
+    diff: { changes: [], n_items_changed: 0, l1_distance_g: 0 },
+  },
+  stage3: { provider: 'template', fallback_used: false, text: 't', rationale: [], runtime_s: 0.01 },
+  stage4: { final_pass: true, checked: 1, corrected: [], safety_fixes: [], unmatched: [], flagged: [], runtime_s: 0.01 },
+  final_rule_evaluation: { score: 0.7, is_safe: true },
+  warnings: [],
+  seed: 42,
+  total_runtime_s: 0.1,
+})
+
+describe('stale results', () => {
+  it('keeps the results labelled with the run that produced them', async () => {
+    // The bug: pick toddler, run, switch the dropdown to adult -- and Stage 1
+    // still showed the toddler's choking violations with nothing saying so, so
+    // the panel read as though it belonged to the adult scenario.
+    stubFetch({ '/api/recommend': TRACE('toddler') })
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/Toddler, 18 months/)).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /run pipeline/i }))
+    await waitFor(() => expect(screen.getByText(/Showing results for/)).toBeTruthy())
+    expect(screen.getByRole('heading', { name: /Toddler, 18 months/ })).toBeTruthy()
+
+    // Change the selection without re-running.
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '__custom__' } })
+
+    await waitFor(() =>
+      expect(screen.getByText(/controls above have changed since this ran/i)).toBeTruthy(),
+    )
+    // And it still names the run it actually came from.
+    expect(screen.getByRole('heading', { name: /Toddler, 18 months/ })).toBeTruthy()
+  })
+})
+
+describe('custom builder', () => {
+  it('offers a custom option in the scenario dropdown', async () => {
+    stubFetch()
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/build your own case/i)).toBeTruthy())
+  })
+
+  it('shows the profile and meal builder when custom is selected', async () => {
+    stubFetch()
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/build your own case/i)).toBeTruthy())
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '__custom__' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Who is eating')).toBeTruthy()
+      expect(screen.getByText('Planned meal')).toBeTruthy()
+      expect(screen.getByText('Pantry')).toBeTruthy()
+    })
+  })
+
+  it('refuses to run a custom case with an empty planned meal', async () => {
+    stubFetch()
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/build your own case/i)).toBeTruthy())
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '__custom__' } })
+
+    await waitFor(() =>
+      expect(screen.getByText(/Add at least one food to the planned meal/)).toBeTruthy(),
+    )
+    expect(screen.getByRole('button', { name: /run pipeline/i }).disabled).toBe(true)
   })
 })

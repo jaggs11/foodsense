@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getHealth, getProviders, getScenarios, recommend } from './api'
+import CustomBuilder from './components/CustomBuilder'
 import MealDiff from './components/MealDiff'
 import Metrics from './components/Metrics'
 import Stepper from './components/Stepper'
@@ -103,6 +104,17 @@ function StagePanel({ stage, trace }) {
   return <Verification report={trace.stage4} />
 }
 
+//: Sentinel for the custom option in the scenario dropdown.
+const CUSTOM_KEY = '__custom__'
+
+/** The four fields the API's MealItem accepts, and nothing else. */
+const toMealItem = (item) => ({
+  food_id: item.food_id,
+  name: item.name,
+  quantity_g: Number(item.quantity_g),
+  form: item.form,
+})
+
 export default function App() {
   const [scenarios, setScenarios] = useState([])
   const [providers, setProviders] = useState([])
@@ -111,6 +123,25 @@ export default function App() {
   const [provider, setProvider] = useState('template')
   const [seed, setSeed] = useState(42)
   const [trace, setTrace] = useState(null)
+  // What actually produced the trace on screen. Kept separately from the
+  // controls because the two drift apart the moment someone changes the
+  // dropdown without re-running: the results are still the old scenario's, and
+  // without this the panel silently reads as though it belonged to the new one.
+  const [ranWith, setRanWith] = useState(null)
+  //: Sentinel scenario key for "not one of the presets". Kept in the same
+  //: dropdown rather than behind a tab, because a custom run is the same
+  //: pipeline on different input, not a different mode.
+  const [custom, setCustom] = useState({
+    profile: {
+      age_group: 'toddler',
+      age_months: 18,
+      weight_kg: 11,
+      goal: 'balanced_nutrition',
+      health_flags: [],
+    },
+    planned: [],
+    pantry: [],
+  })
   const [stage, setStage] = useState('stage2')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -129,18 +160,48 @@ export default function App() {
   async function run() {
     setBusy(true)
     setError(null)
+    // Snapshot the inputs *now*, so what is recorded is what was sent -- not
+    // whatever the controls happen to say by the time the response lands.
+    const isCustom = scenario === CUSTOM_KEY
+    const request = isCustom
+      ? {
+          provider,
+          seed: Number(seed),
+          profile: custom.profile,
+          // Strip the UI-only `allowed_forms` before sending: the request models
+          // are extra="forbid", so an unexpected key is a 422 rather than an
+          // ignored field -- which is the behaviour we want, and means the
+          // client has to send exactly what the schema declares.
+          planned_meal: { items: custom.planned.map(toMealItem) },
+          pantry: custom.pantry.map(toMealItem),
+        }
+      : { scenario, provider, seed: Number(seed) }
+    const label = isCustom
+      ? 'Custom meal'
+      : (scenarios.find((s) => s.key === scenario)?.title ?? scenario)
     try {
-      const result = await recommend({ scenario, provider, seed: Number(seed) })
+      const result = await recommend(request)
       setTrace(result)
+      setRanWith({ scenario, provider, seed: Number(seed), label })
       setStage('stage2')
     } catch (e) {
       setError(e.message)
+      setTrace(null)
+      setRanWith(null)
     } finally {
       setBusy(false)
     }
   }
 
   const selected = scenarios.find((s) => s.key === scenario)
+  const isCustom = scenario === CUSTOM_KEY
+
+  // True when the controls have moved on from the results below them.
+  const stale =
+    ranWith !== null &&
+    (ranWith.scenario !== scenario ||
+      ranWith.provider !== provider ||
+      ranWith.seed !== Number(seed))
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -175,6 +236,7 @@ export default function App() {
                     {s.title}
                   </option>
                 ))}
+                <option value={CUSTOM_KEY}>Custom &mdash; build your own case</option>
               </select>
             </label>
 
@@ -213,14 +275,25 @@ export default function App() {
             <button
               type="button"
               onClick={run}
-              disabled={busy}
+              disabled={busy || (isCustom && custom.planned.length === 0)}
               className="bg-slate-900 text-white rounded px-5 py-2 font-semibold disabled:opacity-50"
             >
               {busy ? 'Running…' : 'Run pipeline'}
             </button>
           </div>
 
-          {selected && <p className="text-sm text-slate-600 mt-3">{selected.description}</p>}
+          {isCustom ? (
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <CustomBuilder value={custom} onChange={setCustom} />
+              {custom.planned.length === 0 && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mt-3">
+                  Add at least one food to the planned meal before running.
+                </p>
+              )}
+            </div>
+          ) : (
+            selected && <p className="text-sm text-slate-600 mt-3">{selected.description}</p>
+          )}
 
           {providers.some((p) => !p.available) && (
             <p className="text-xs text-slate-500 mt-2">
@@ -240,6 +313,31 @@ export default function App() {
 
         {trace && (
           <>
+            <div
+              className={`rounded-lg border px-4 py-3 ${
+                stale ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'
+              }`}
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Showing results for
+                  </span>
+                  <h2 className="font-semibold text-slate-900">{ranWith?.label}</h2>
+                </div>
+                <span className="text-xs font-mono text-slate-500">
+                  seed {ranWith?.seed} &middot; provider {ranWith?.provider}
+                </span>
+              </div>
+              {stale && (
+                <p className="text-sm text-amber-900 mt-2">
+                  The controls above have changed since this ran. These results are still
+                  from <strong>{ranWith?.label}</strong> &mdash; press <em>Run pipeline</em>
+                  {' '}to update them.
+                </p>
+              )}
+            </div>
+
             <Metrics trace={trace} />
 
             {trace.warnings?.length > 0 && (

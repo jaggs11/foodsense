@@ -20,6 +20,10 @@ export const getHealth = () => fetch('/api/health').then(unwrap)
 export const getScenarios = () => fetch('/api/scenarios').then(unwrap)
 export const getProviders = () => fetch('/api/providers').then(unwrap)
 
+/** Type-ahead over the curated USDA database. Local; no network beyond this app. */
+export const searchFoods = (q, limit = 8) =>
+  fetch(`/api/foods?q=${encodeURIComponent(q)}&limit=${limit}`).then(unwrap)
+
 /**
  * Run the pipeline. `body` is either {scenario} or {profile, planned_meal, pantry}.
  * A provider with no key is NOT an error here -- it comes back 200 with

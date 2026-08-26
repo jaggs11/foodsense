@@ -38,4 +38,13 @@ there is one origin and no cross-origin request to permit.
 | `MealDiff` | Stage-2 before/after — removed red + struck, added green, changed amber with old → new grams, kept grey. Colour is never the only signal; every row also carries a word and a symbol, because a projector washes out exactly the distinction the colours are making |
 | `Verification` | Stage 4 in full: counts checked/corrected/fixed/unmatched, the hazards it found, the repairs it applied, the claims it overwrote, and `final_pass` |
 | `Metrics` | suitability before → after, edits, L1 distance, safety, total time |
-| `App` | scenario dropdown, provider dropdown (unavailable ones disabled with their reason shown), seed input, warnings, raw trace viewer |
+| `CustomBuilder` | build an arbitrary case: profile (age group, age, weight, goal, health-flag chips), a planned meal and a pantry, both assembled through `/api/foods?q=` type-ahead over the curated USDA database. Entirely local, so a custom run is as offline as a preloaded one |
+| `App` | scenario dropdown (three presets plus **Custom**), provider dropdown (unavailable ones disabled with their reason shown), seed input, warnings, raw trace viewer |
+
+## Results are labelled with the run that produced them
+
+The results header names the scenario, seed and provider that were **actually
+sent**, not whatever the controls currently say, and a banner appears when the two
+diverge. Without it, changing the dropdown after a run left the previous
+scenario's Stage-1 violations on screen under the new scenario's name — a
+toddler's choking hazards displayed beneath "Adult, weight management".
