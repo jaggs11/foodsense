@@ -528,6 +528,27 @@ lives in [`docs/demo_script.md`](docs/demo_script.md).*
   toddler feeding guidance, the Dietary Guidelines for Americans, AHA and ESPEN/ASPEN.
   Every threshold in `configs/` carries its source as a YAML comment.
 
-## License
+## License and data provenance
 
-MIT — see [LICENSE](LICENSE).
+The **code** in this repository is MIT — see [LICENSE](LICENSE). The **data** is
+not ours to license, and is treated separately.
+
+| Source | What is in this repo | Terms |
+|---|---|---|
+| USDA FoodData Central (SR Legacy, Foundation Foods) | `data/processed/` — a curated 2,590-food subset with the 33-nutrient vectors | Public domain (U.S. Government work) |
+| Food.com Recipes and Interactions | `data/samples/foodcom_sample.csv` — 500 real rows, seeded sample | Upstream terms apply; see the dataset's own page |
+| Nutrition5k (Google Research) | `data/samples/nutrition5k_sample.csv` — 300 real rows, seeded sample | Upstream terms apply; see the dataset's own page |
+
+The two corpus samples are committed **only** so that a fresh clone can run the
+pipeline and the full test suite with no network and no credentials. They are
+small seeded extracts, not redistributions of the datasets: the full corpora are
+downloaded into `data/raw/`, which is gitignored and never committed. Exact row
+counts, extraction rules and seeds are in
+[`data/samples/README.md`](data/samples/README.md), and the download sources in
+[`data/README.md`](data/README.md).
+
+Guideline thresholds are derived from published public-health guidance (NASEM DRI,
+AAP/CDC, DGA 2020–2025, AHA, ESPEN/ASPEN, IDDSI). Each one carries its source as a
+comment beside it in `configs/`. They are an implementation of published guidance,
+not clinical advice, and this system is a capstone research prototype rather than a
+dietary tool for real use.
