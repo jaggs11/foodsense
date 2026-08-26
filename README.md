@@ -17,10 +17,11 @@ which pairs a postprandial-glucose predictor with a counterfactual optimiser and
 translation layer, along five axes: availability-awareness, modification-based editing,
 post-generation verification, generalised health goals, and age/life-stage personalisation.
 
-> **Status:** Phases 0–3 complete — data layer, constraint engine, Stage-1 surrogate
-> and the availability-aware counterfactual optimiser with its baselines. Stages 3–4
-> land in phases 4–6; see [Roadmap](#roadmap). No evaluation number appears in this
-> repository until the script that produces it has actually been run — see `results/`.
+> **Status:** Phases 0–4 complete — **all four stages run end to end, offline, with no
+> API key.** `make demo` walks the three scenarios from the proposal. The web UI and
+> Docker packaging land in phases 5–6; see [Roadmap](#roadmap). No evaluation number
+> appears in this repository until the script that produces it has actually been run —
+> see `results/`.
 
 ---
 
@@ -179,27 +180,47 @@ Headline, over 300 sampled cases (100 per age group) — full table in
 
 | Method | Usable validity | Safe | Availability violations | Safety violations | norm-L1 | Edits |
 |---|---|---|---|---|---|---|
-| **FoodSense-DE** | 18% | **100%** | **0%** | **0%** | **0.628** | **2.53** |
-| Wachter (same space) | 47% | 79% | 0% | 21% | 0.969 | 5.73 |
-| Wachter-style | 9% | 78% | 54% | 22% | 0.925 | 5.34 |
-| DiCE-random | 17% | 80% | 36% | 20% | 0.985 | 2.09 |
-| DiCE-genetic | 2% | 79% | 1% | 21% | 0.029 | 0.09 |
-| Greedy | 24% | 82% | 51% | 18% | 0.859 | 3.74 |
+| **FoodSense-DE** | 22% | **100%** | **0%** | **0%** | **0.639** | 2.90 |
+| Wachter (same space) | 40% | 64% | 0% | 36% | 0.948 | 5.90 |
+| Wachter-style | 7% | 67% | 56% | 33% | 0.897 | 5.95 |
+| DiCE-random | 17% | 76% | 35% | 24% | 0.986 | 2.05 |
+| DiCE-genetic | 2% | 73% | 0% | 27% | 0.000 | 0.00 |
+| Greedy | 29% | 77% | 50% | 23% | 0.887 | 3.84 |
 
-FoodSense is the only method that never recommends a food the user does not have and
-never leaves a safety violation in place, and it makes the smallest edit of any
-method that edits at all. It reaches the nutrition target less often than an
-unconstrained search does — `results/cf_comparison.md` isolates exactly how much of
-that gap is the constraints and how much is the smaller search space, and shows that
-the baselines' apparent advantage largely disappears once you stop counting
-recommendations the user cannot actually cook.
+Across 300 cases FoodSense never once recommended a food the user did not have and
+never once left a safety violation in place, and it made the smallest edit of any
+method that edits at all. It is also the only row where validity and *usable*
+validity are the same number — the others reach the nutrition target substantially
+by reaching for ingredients that are not in the kitchen.
 
-| Artefact | What it shows |
-|----------|---------------|
-| `results/cf_comparison.md` | **Available now.** FoodSense-DE vs a same-space ablation vs Wachter-style vs DiCE (random/genetic) vs greedy — validity, L1/L2 distance, sparsity, **availability-violation %**, **safety-violation %**, runtime, by age group over 300 cases |
-| `results/verification_eval.md` | Rate of hallucinated quantities / unsafe items in Stage-3 output, before vs after Stage 4 |
-| `results/dataset_comparison.md` | **Available now.** Corpus reconstruction fidelity and Stage-1 metrics on Food.com vs Nutrition5k |
-| `results/llm_benchmark.md` | Macro RMSE, goal consistency and diversity across providers (skipped gracefully with no keys) |
+It reaches the target less often than an unconstrained search does, and
+[`results/cf_comparison.md`](results/cf_comparison.md) isolates why: a same-space
+ablation with the safety and sparsity terms removed doubles validity while producing
+36% safety violations and twice the edits. Validity is a dial —
+`lambda_validity` moves it from 12% to 58% across its measured sweep. Safety is not
+a setting.
+
+### Stage 4 catches what a generator gets wrong
+
+[`results/verification_eval.md`](results/verification_eval.md) — faults of the kinds
+an LLM actually produces, injected into Stage-3 output (every fault labelled as
+injected):
+
+| Injected fault | Cases | Detected | Reached the user |
+|---|---|---|---|
+| `hallucinated_food` | 90 | 100% | **0%** |
+| `impossible_form` | 90 | 100% | **0%** |
+| `inflated_claim` | 90 | 100% | **0%** |
+| `reintroduced_hazard` | 30 | 100% | **0%** |
+| `quantity_drift` | 90 | 94% | 6% |
+
+### The three demo scenarios
+
+| Scenario | Rule score | What changed |
+|---|---|---|
+| `toddler_choking` | 0.005 → 0.680 | Grapes **quartered** (not removed); whole peanuts substituted; ground chicken added |
+| `elderly_sodium` | 0.026 → 0.578 | Sodium **1,413 → 443 mg**, inside the 500 mg per-meal ceiling |
+| `adult_weight` | 0.279 → 0.709 | Fries and cola out, broccoli in; 621 → 392 kcal, protein 24 g |
 
 ---
 
@@ -231,7 +252,7 @@ docs/                      # architecture, evaluation, traceability, demo script
 - [x] **Phase 1** — data layer (curated USDA DB, Food.com + Nutrition5k loaders)
 - [x] **Phase 2** — `RuleEngine`, guideline configs, Stage-1 surrogate
 - [x] **Phase 3** — Stage-2 optimiser + DiCE/Wachter/greedy baselines
-- [ ] **Phase 4** — Stage-3 RAG + Stage-4 verifier + end-to-end pipeline
+- [x] **Phase 4** — Stage-3 RAG + Stage-4 verifier + end-to-end pipeline
 - [ ] **Phase 5** — FastAPI + React UI + Docker
 - [ ] **Phase 6** — full evaluation, docs, ship
 
