@@ -324,6 +324,14 @@ def parse_response(raw: str, request: TranslationRequest, provider: str) -> Prov
     )
 
 
+#: Wall-clock ceiling on a single provider call. Every network path must have
+#: one: a demo that hangs because the venue's Wi-Fi is captive-portalled is worse
+#: than a demo that quietly uses the offline template, and without an explicit
+#: timeout the SDKs will wait far longer than anyone standing in front of an
+#: audience will tolerate.
+PROVIDER_TIMEOUT_S = 20.0
+
+
 class _RetryingLLMProvider(LLMProvider):
     """Shared control flow: try, validate, retry once, fall back to the template."""
 
@@ -338,8 +346,15 @@ class _RetryingLLMProvider(LLMProvider):
                 try:
                     raw = self._complete(prompt, attempt)
                 except Exception as exc:
+                    # Deliberately not retried. The retry exists for a model that
+                    # replied with something unparseable, where asking again
+                    # plausibly helps. An exception here is transport -- no key, no
+                    # route, a timeout -- and asking again just spends the timeout
+                    # a second time before reaching the same fallback. Bounding the
+                    # wait matters more than a second chance the network will not
+                    # give us.
                     last_error = f"{type(exc).__name__}: {exc}"
-                    continue
+                    break
                 parsed = parse_response(raw, request, self.name)
                 if parsed is not None:
                     return parsed
@@ -428,7 +443,9 @@ class AnthropicProvider(_RetryingLLMProvider):
     def _complete(self, prompt: str, attempt: int) -> str:
         import anthropic
 
-        client = anthropic.Anthropic()
+        # max_retries=0: the SDK's own retry budget would multiply the ceiling
+        # above, and this class already owns the retry policy.
+        client = anthropic.Anthropic(timeout=PROVIDER_TIMEOUT_S, max_retries=0)
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": 4096,
@@ -471,7 +488,7 @@ class OpenAIProvider(_RetryingLLMProvider):
             if not attempt
             else (prompt + "\n\nYour previous reply was not valid JSON. Reply with JSON only.")
         )
-        response = OpenAI().chat.completions.create(
+        response = OpenAI(timeout=PROVIDER_TIMEOUT_S, max_retries=0).chat.completions.create(
             model=self.model,
             temperature=self.temperature,
             response_format={"type": "json_object"},
@@ -529,7 +546,7 @@ class OllamaProvider(_RetryingLLMProvider):
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=PROVIDER_TIMEOUT_S) as response:
             return json.loads(response.read()).get("response", "")
 
 

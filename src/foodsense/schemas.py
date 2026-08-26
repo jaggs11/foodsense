@@ -461,6 +461,16 @@ class Stage3Result(BaseModel):
     fallback_used: bool = Field(
         default=False, description="True when an LLM provider failed and the template took over"
     )
+    fallback_reason: str = Field(
+        default="",
+        description=(
+            "Why the provider was not used, when it was not. Carried on the trace "
+            "because the UI has to show it: 'the LLM was skipped' is alarming and "
+            "'ANTHROPIC_API_KEY not set' is not, and the difference between those "
+            "two readings is the whole offline-first claim. Never contains key "
+            "material -- providers report the absence of a key, not its value."
+        ),
+    )
     runtime_s: float = 0.0
 
 

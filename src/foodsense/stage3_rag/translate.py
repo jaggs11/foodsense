@@ -163,6 +163,7 @@ def translate(
         retrieved_candidates=candidates,
         claimed_nutrients=db.nutrients_for(response.items),
         fallback_used=response.fallback_used,
+        fallback_reason=response.error or "",
         runtime_s=round(time.perf_counter() - started, 4),
     )
 
