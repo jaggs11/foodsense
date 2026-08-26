@@ -271,10 +271,89 @@ class TestObjective:
         """Re-quartering the grapes is work the user has to do, at identical grams."""
         space = build_space(planned, pantry, db, profile=toddler)
         x = space.encode_planned()
-        _, _, before, _ = meal_diff(space, x, 2.0)
+        _, _, before, _ = meal_diff(space, x, 2.0, MIN_SERVING_G)
         x[1] = (x[1] + 1) % len(space.variables[0].forms)
-        _, _, after, _ = meal_diff(space, x, 2.0)
+        _, _, after, _ = meal_diff(space, x, 2.0, MIN_SERVING_G)
         assert after == before + 1
+
+
+class TestTheDecoderAndTheDiffAgree:
+    """Three numbers in this pipeline are grams and mean different things.
+
+    ``min_serving_g`` is the presence floor -- is this food on the plate at all.
+    ``change_epsilon_g`` is the no-op tolerance -- did a served amount move.
+    ``build_diff``'s epsilon is the same question one stage later, for the user.
+
+    The objective's diff and the decoder used to apply *different* presence
+    floors, so the search paid L1 distance and a sparsity increment for
+    sub-serving additions the decoder then threw away, and under-counted the L1
+    of a planned item it had shrunk out of existence. These pin the boundary.
+    """
+
+    def test_just_below_the_floor_is_not_an_addition(self, db, planned, pantry, toddler):
+        space = build_space(planned, pantry, db, profile=toddler)
+        index = next(i for i, v in enumerate(space.variables) if v.from_pantry)
+        x = space.encode_planned()
+        x[2 * index] = MIN_SERVING_G - 1.0
+
+        assert space.variables[index].food_id not in space.decode(x).food_ids()
+        l1, _, n_changed, _ = meal_diff(space, x, 2.0, MIN_SERVING_G)
+        assert l1 == 0.0, "charged distance for a portion that is not served"
+        assert n_changed == 0, "charged sparsity for an edit that never happened"
+
+    def test_exactly_at_the_floor_is_an_addition(self, db, planned, pantry, toddler):
+        space = build_space(planned, pantry, db, profile=toddler)
+        index = next(i for i, v in enumerate(space.variables) if v.from_pantry)
+        x = space.encode_planned()
+        x[2 * index] = MIN_SERVING_G
+
+        assert space.variables[index].food_id in space.decode(x).food_ids()
+        l1, _, n_changed, _ = meal_diff(space, x, 2.0, MIN_SERVING_G)
+        assert l1 == pytest.approx(MIN_SERVING_G)
+        assert n_changed == 1
+
+    def test_shrinking_an_item_below_the_floor_costs_its_whole_weight(
+        self, db, planned, pantry, toddler
+    ):
+        """It is a removal, not a reduction, and the L1 has to say the same."""
+        space = build_space(planned, pantry, db, profile=toddler)
+        index = next(i for i, v in enumerate(space.variables) if not v.from_pantry)
+        planned_g = space.variables[index].planned_quantity_g
+        x = space.encode_planned()
+        x[2 * index] = MIN_SERVING_G - 1.0
+
+        assert space.variables[index].food_id not in space.decode(x).food_ids()
+        l1, _, _, _ = meal_diff(space, x, 2.0, MIN_SERVING_G)
+        assert l1 == pytest.approx(planned_g)
+
+    def test_the_two_agree_on_every_random_point(self, db, planned, pantry, toddler):
+        """The property, not the three cases: for any decision vector, the L1 and
+        edit count the objective charges are the L1 and edit count of the meal the
+        decoder actually produces."""
+        space = build_space(planned, pantry, db, profile=toddler)
+        planned_by_id = {v.food_id: v.planned_quantity_g for v in space.variables}
+        planned_form = {v.food_id: v.planned_form for v in space.variables}
+        rng = np.random.default_rng(11)
+        bounds = np.asarray(space.bounds())
+
+        for _ in range(200):
+            x = rng.uniform(bounds[:, 0], bounds[:, 1])
+            meal = space.decode(x)
+            served = {i.food_id: i for i in meal.items}
+
+            expected_l1 = 0.0
+            expected_changed = 0
+            for food_id, before in planned_by_id.items():
+                item = served.get(food_id)
+                after = item.quantity_g if item is not None else 0.0
+                expected_l1 += abs(after - before)
+                form_changed = item is not None and item.form != planned_form[food_id]
+                if abs(after - before) > 2.0 or form_changed:
+                    expected_changed += 1
+
+            l1, _, n_changed, _ = meal_diff(space, x, 2.0, MIN_SERVING_G)
+            assert l1 == pytest.approx(expected_l1)
+            assert n_changed == expected_changed
 
 
 # ---------------------------------------------------------------------------

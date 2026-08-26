@@ -114,7 +114,7 @@ def run_pipeline(
                 planned_meal,
                 optimized_meal,
                 planned_evaluation.violations,
-                objective_config.quantity_epsilon_g,
+                objective_config.change_epsilon_g,
             ),
             suitability_before=suitability,
             suitability_after=result.terms.suitability,

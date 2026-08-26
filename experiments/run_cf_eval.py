@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from foodsense import RESULTS_DIR, SEED
 from foodsense.constraints.engine import RuleEngine
+from foodsense.constraints.goals import meal_metrics
 from foodsense.data.corpora import load_meals
 from foodsense.data.fdc import FoodDB, get_food_db
 from foodsense.schemas import AgeGroup, Meal, UserProfile
@@ -71,6 +72,58 @@ METHOD_LABELS = {
     "dice_genetic": "DiCE-genetic",
     "greedy": "Greedy",
 }
+
+
+#: Hard numeric rules exist for a handful of quantities; sodium is the one a
+#: planned meal routinely breaches, and the one whose promotion from soft to hard
+#: severity in Phase 3 is under scrutiny. Recorded per row so the decomposition
+#: can ask whether an invalid case was invalid *because* of it.
+_SODIUM_RULE_QUANTITY = "sodium_mg"
+
+
+def _diagnostics(result, case, db, engine, model) -> dict:
+    """Per-row detail the headline columns cannot carry.
+
+    The pooled table says how often a method was invalid. It cannot say *why*,
+    and the two candidate explanations -- a hard rule the meal could not be
+    repaired past, versus the surrogate misjudging the boundary it was optimising
+    toward -- call for different responses. These columns let
+    ``run_validity_decomposition.py`` separate them without re-running anything.
+    """
+    profile = case.profile
+    planned_metrics = meal_metrics(case.planned_meal, db)
+    final_metrics = meal_metrics(result.meal, db) if result.meal.items else {}
+    evaluation = engine.evaluate(result.meal, profile) if result.meal.items else None
+
+    ceiling = next(
+        (
+            rule.threshold.maximum
+            for rule in engine.rules_for(profile)
+            if rule.quantity == _SODIUM_RULE_QUANTITY
+            and rule.severity == "hard"
+            and rule.threshold.maximum is not None
+        ),
+        None,
+    )
+    planned_sodium = planned_metrics.get(_SODIUM_RULE_QUANTITY, 0.0)
+    final_sodium = final_metrics.get(_SODIUM_RULE_QUANTITY, 0.0)
+
+    # What the optimiser *believed* about the meal it returned. Where this clears
+    # the target but the rule engine's score does not, the loss is surrogate error
+    # at the decision boundary rather than a search that ran out of road.
+    surrogate = float(model.predict(result.meal, profile)) if result.meal.items else 0.0
+
+    return {
+        "soft_score_after": round(evaluation.soft_score, 4) if evaluation else 0.0,
+        "surrogate_after": round(surrogate, 4),
+        "hard_rule_ids": ";".join(sorted({v.rule_id for v in evaluation.hard_violations}))
+        if evaluation
+        else "",
+        "hard_sodium_ceiling_mg": round(ceiling, 1) if ceiling is not None else "",
+        "planned_sodium_mg": round(planned_sodium, 1),
+        "final_sodium_mg": round(final_sodium, 1),
+        "planned_breached_hard_sodium": int(ceiling is not None and planned_sodium > ceiling),
+    }
 
 
 @dataclass(slots=True)
@@ -152,6 +205,14 @@ def render(
         "identical cases; per-method wall-clock is the Runtime column rather than a single",
         "total. Regenerate everything with `make eval`.",
         "",
+        "One caveat on the **Runtime** and **Evals** columns specifically: they were",
+        "measured on an ordinary developer laptop, single-process, with no attempt to",
+        "isolate the machine. They are comparable *between methods within a run*, because",
+        "every method ran interleaved on the same cases under the same conditions, and they",
+        "are the right columns for the claim being made (that no method was given a larger",
+        "budget than another). They are not benchmark-grade absolute timings. Every other",
+        "column in this table is deterministic given the seed and does not depend on load.",
+        "",
         "## What is being compared",
         "",
         "| Method | Search space | Objective |",
@@ -209,9 +270,52 @@ def render(
             f"| {cell['evaluations']:.0f} | {cell['runtime_s']:.2f} |"
         )
 
+    # Every figure in the prose below is read out of `by_cell`, which is the same
+    # object the tables are rendered from. Hand-written numbers in a results file
+    # go stale the first time the experiment is re-run, and a stale number in a
+    # results file is indistinguishable from a fabricated one.
+    fs = by_cell.get(("foodsense_de", "all"), {})
+    wr = by_cell.get(("wachter_restricted", "all"), {})
+    wa = by_cell.get(("wachter", "all"), {})
+    dg = by_cell.get(("dice_genetic", "all"), {})
+    editing = [
+        (METHOD_LABELS[m], by_cell[(m, "all")]["norm_l1"])
+        for m in METHODS
+        if by_cell.get((m, "all"), {}).get("sparsity", 0) > 0.5
+    ]
+    others = [value for label, value in editing if label != "FoodSense-DE"] or [0.0]
+
     lines += [
         "",
         "## Reading the table",
+        "",
+        "### DiCE-genetic is a null row, and both of its zeros are trivial",
+        "",
+        "Read this before reading anything else in the table, because two of",
+        f"DiCE-genetic's columns look like wins and neither is. It edits {dg.get('sparsity', 0):.2f}",
+        f"items per case and moves {dg.get('norm_l1', 0):.3f} normalised grams: it is, in almost",
+        "every case, returning the planned meal untouched.",
+        "",
+        "*Why it does not converge.* Its initialiser draws candidates uniformly over every",
+        "feature and keeps only those that are *already* valid counterfactuals",
+        "(`do_random_init`). On this problem a uniform draw puts a positive amount of every",
+        "candidate food on one plate -- a three-kilogram meal scoring 0.36-0.43 against a",
+        "0.70 target -- so the acceptance condition is almost never met and the loop does",
+        "not terminate on its own. Held to the same evaluation budget as every other",
+        "method, it spends it without converging. That is a property of the method on a",
+        "sparse feasible region, not a limitation of this harness, and it is reported",
+        "rather than hidden.",
+        "",
+        "*Why its 0% availability-violation rate is not FoodSense's 0%.* A method that adds",
+        "nothing cannot add something unavailable. DiCE-genetic's zero in that column is",
+        "arithmetic; FoodSense's is a guarantee that holds **while it is actively editing**",
+        f"({fs.get('sparsity', 0):.2f} items per case). The two are not the same claim and must not",
+        f"be read as one. Its honest column is safety violation, at "
+        f"{_fmt_pct(dg.get('safety_violation', 0))} -- those are the planned meal's own hazards,",
+        "left in place.",
+        "",
+        "The same caution applies to its distance columns: a method that changes nothing",
+        "scores a perfect distance. Distance is only comparable among methods that edited.",
         "",
         "### The ablation ladder",
         "",
@@ -226,31 +330,41 @@ def render(
         "### FoodSense's validity is lower, and here is exactly why",
         "",
         "Against the same space and the same algorithm, dropping the safety and sparsity",
-        "terms roughly doubles validity. That is a real cost and it is bought with two",
-        "things the table also shows: a fifth of those meals leave a hard-safety violation",
-        "in place, and they take more than twice as many edits to get there.",
+        f"terms moves validity from {_fmt_pct(fs.get('validity', 0))} to "
+        f"{_fmt_pct(wr.get('validity', 0))}. That is a real cost, and the table shows what buys",
+        f"it: those meals leave a hard-safety violation in place in "
+        f"{_fmt_pct(wr.get('safety_violation', 0))} of cases against FoodSense's "
+        f"{_fmt_pct(fs.get('safety_violation', 0))}, and take {wr.get('sparsity', 0):.2f} edits",
+        f"against {fs.get('sparsity', 0):.2f} to get there.",
         "",
         "The trade-off is deliberate, and it is a dial rather than a limit.",
         "`lambda_validity` in `configs/pipeline.yaml` moves validity from 12% to 58% across",
-        "its measured sweep, at the price of more edits per meal. Safety was 100% at every",
-        "setting in that sweep. Validity is tunable; safety is not a setting.",
+        "its measured sweep, at the price of more edits per meal, and safety is 100% at",
+        "every setting in that sweep. Validity is tunable; safety is not a setting. The",
+        "full sweep is reported as a sensitivity analysis in",
+        "[`lambda_sweep.md`](lambda_sweep.md).",
+        "",
+        "Validity is also not uniform across age groups, and the reason is a deliberate",
+        "safety decision rather than an optimiser weakness. See",
+        "[`validity_decomposition.md`](validity_decomposition.md), which splits every",
+        "invalid FoodSense case into the reason it was invalid.",
         "",
         "### Why 'usable validity' is the fair column",
         "",
         "A counterfactual that tells someone to eat a food they do not have has not solved",
         "their problem. **Usable validity** counts only the runs that hit the target *and*",
         "stayed inside the user's own ingredients, and it is where most of the baselines'",
-        "advantage goes: Wachter-style is valid in 39% of cases but only 9% of the time",
-        "without reaching for something unavailable -- 31 of its 39 successes depend on an",
-        "ingredient the user does not have.",
+        f"advantage goes: Wachter-style is valid in {_fmt_pct(wa.get('validity', 0))} of cases but",
+        f"only {_fmt_pct(wa.get('usable_validity', 0))} of the time without reaching for",
+        "something unavailable.",
         "",
         "### Availability restriction is not only safer, it is cheaper to search",
         "",
-        "Wachter with the restricted space scores *higher* validity than the same method",
-        "with the wider one (47% vs 39%). The extra foods double the dimensionality without",
-        "adding budget, so the search converges less well. Restricting the space to what the",
-        "user actually has is not purely a constraint being paid for -- it also makes the",
-        "problem smaller.",
+        f"Wachter with the restricted space scores {_fmt_pct(wr.get('validity', 0))} validity",
+        f"against {_fmt_pct(wa.get('validity', 0))} for the same method with the wider one. The",
+        "extra foods raise the dimensionality without adding budget, so the search converges",
+        "less well. Restricting the space to what the user actually has is not purely a",
+        "constraint being paid for -- it also makes the problem smaller.",
         "",
         "### Availability and safety violations",
         "",
@@ -266,11 +380,10 @@ def render(
         "",
         "### Distance and sparsity",
         "",
-        "Lower is better, but only among methods that actually reached validity: a method",
-        "that changes nothing scores a perfect distance, which is why DiCE-genetic's 0.029",
-        "means nothing. Among the methods that do edit, FoodSense makes the smallest change",
-        "(norm-L1 0.628 against 0.859-0.985) with roughly half the edits of the",
-        "Wachter-style rows. That is extension #2 doing its job.",
+        "Lower is better, but only among the methods that actually edited (see the",
+        "DiCE-genetic caveat above). Among those, FoodSense makes the smallest change:",
+        f"norm-L1 {fs.get('norm_l1', 0):.3f} against {min(others):.3f}-{max(others):.3f} for the",
+        f"rest, at {fs.get('sparsity', 0):.2f} edits. That is extension #2 doing its job.",
         "",
     ]
 
@@ -283,18 +396,8 @@ def render(
         lines += [
             "",
             "`evaluation_budget_exhausted` for DiCE-genetic is a real finding rather than a",
-            "harness limitation. Its initialiser draws candidates uniformly over every",
-            "feature and keeps only those that are *already* valid counterfactuals. On this",
-            "problem a uniform draw puts a positive amount of every candidate food on one",
-            "plate -- a three-kilogram meal scoring 0.36-0.43 against a 0.70 target -- so the",
-            "condition is almost never met and the loop does not terminate on its own. Held",
-            "to the same budget as every other method, it spends it without converging.",
-            "",
-            "One consequence to read carefully: a method that never edits the meal shows a",
-            "0% availability-violation rate for the trivial reason that it added nothing.",
-            "DiCE-genetic's zero in that column is not the same claim as FoodSense's, which",
-            "holds while it is actively editing. Its safety-violation rate is the honest",
-            "number for it -- those are the planned meal's own hazards, left unrepaired.",
+            "harness limitation; it is explained in full under *Reading the table* above,",
+            "immediately beneath the results it affects.",
             "",
         ]
     return "\n".join(lines)
@@ -452,6 +555,7 @@ def main(argv: list[str] | None = None) -> int:
                     "evaluations": result.evaluations,
                     "runtime_s": round(result.runtime_s, 3),
                     "note": result.note,
+                    **_diagnostics(result, case, db, engine, model),
                 }
             )
         if index % 10 == 0 or index == len(cases):

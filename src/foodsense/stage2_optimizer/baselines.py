@@ -195,7 +195,7 @@ def _measure(
             and food_id in planned_forms
             and next(i.form for i in meal.items if i.food_id == food_id) != planned_forms[food_id]
         )
-        if abs(delta) > config.quantity_epsilon_g or form_changed:
+        if abs(delta) > config.change_epsilon_g or form_changed:
             n_changed += 1
 
     return CFResult(

@@ -21,8 +21,17 @@ catches and repairs.
 Every injected fault is labelled as injected. Part B measures a capability under
 controlled conditions; it is not a claim about how often real LLMs err.
 
+Part B reports its faults in two blocks, because pooling them would overstate the
+result. Three of the six are caught *by construction* -- an id absent from the
+database fails a dictionary lookup, a form drawn from the complement of a food's
+allowed forms fails a membership test, a 1.9x claim against a 10% tolerance is
+outside it by arithmetic -- and their 100% rates measure that the guards are
+wired up, not that the verifier is capable. The other three require independent
+re-derivation and are the honest headline.
+
     python experiments/run_verification_eval.py
     python experiments/run_verification_eval.py --cases 40 --providers template anthropic
+    python experiments/run_verification_eval.py --fault-cases 300
 """
 
 from __future__ import annotations
@@ -62,13 +71,105 @@ PANTRY_CATEGORIES = (
     "cereal",
 )
 
-FAULTS = (
-    "quantity_drift",
-    "hallucinated_food",
-    "impossible_form",
-    "inflated_claim",
-    "reintroduced_hazard",
+
+@dataclass(frozen=True, slots=True)
+class Fault:
+    """One injected fault, and an honest statement of how hard it is to catch."""
+
+    key: str
+    #: ``construction`` -- the check and the injection consult the same fact, so
+    #: detection cannot fail and a 100% rate carries no information about
+    #: capability. ``rederivation`` -- the verifier has to independently recompute
+    #: or re-derive something to notice, and could genuinely miss it.
+    kind: str
+    injected: str
+    why: str
+    #: Why it sits in that class. Written down because the classification is the
+    #: part a reader should be able to disagree with.
+    because: str
+
+
+#: Splitting these is the difference between a headline that survives scrutiny and
+#: one that does not. Two of the five faults are caught by definition: an id that
+#: is not in the database fails a dictionary lookup, and a 1.9x claim against a
+#: 10% tolerance is outside it by arithmetic. Reporting those in one pooled
+#: "100% detected" number with the two that require real work would be padding.
+FAULT_SPECS = (
+    Fault(
+        key="hallucinated_food",
+        kind="construction",
+        injected='An item replaced by a plausible name with the fake id "9999999"',
+        why="The classic failure: a food that sounds real and is not",
+        because=(
+            "`db.find` is a dictionary lookup on a fixed key set. The id is absent, "
+            "so the lookup fails every time. No recomputation is involved."
+        ),
+    ),
+    Fault(
+        key="impossible_form",
+        kind="construction",
+        injected="A preparation drawn from the complement of the food's allowed forms",
+        why="Forms are text to a model; nothing stops it writing 'pureed steak'",
+        because=(
+            "The injector picks a form *because* it is absent from "
+            "`record.allowed_forms`, and the verifier's check is membership in that "
+            "same tuple. It is one table read against its own complement."
+        ),
+    ),
+    Fault(
+        key="inflated_claim",
+        kind="construction",
+        injected="Nutrient totals overstated by 1.9x against a 10% tolerance",
+        why="Models assert nutrition figures confidently and wrongly",
+        because=(
+            "90% over a 10% bound cannot land inside it. The magnitude is chosen "
+            "far outside the tolerance, so the comparison is decided before it runs."
+        ),
+    ),
+    Fault(
+        key="quantity_drift_near",
+        kind="rederivation",
+        injected="One item's quantity multiplied by 1.1-1.3x -- just past the tolerance",
+        why="The realistic version: a small restatement, not an obvious one",
+        because=(
+            "Claimed nutrients are computed *before* the drift, so catching it "
+            "requires recomputing the meal from the database and comparing. A small "
+            "drift on a small item moves the meal total by less than the tolerance "
+            "and is genuinely missed -- which is what makes this band the one that "
+            "reports where detection begins rather than confirming the easy regime."
+        ),
+    ),
+    Fault(
+        key="quantity_drift_far",
+        kind="rederivation",
+        injected="One item's quantity multiplied by 1.6-3.0x",
+        why="Models restate amounts from memory and drift",
+        because=(
+            "Same mechanism as the near band. Larger drifts move the meal total "
+            "further outside the tolerance, so this is the easy end of the same "
+            "measurement, reported separately rather than pooled with it."
+        ),
+    ),
+    Fault(
+        key="reintroduced_hazard",
+        kind="rederivation",
+        injected="A repaired item put back in its unsafe form, or an unsafe food added",
+        why="A rewrite can undo the optimiser's safety fix without noticing",
+        because=(
+            "Nothing in the item marks it as unsafe. The verifier has to re-run the "
+            "full `RuleEngine` -- age config, hazard class, form, age in months -- "
+            "and re-derive the violation from scratch. This is the fault the whole "
+            "extension exists for."
+        ),
+    ),
 )
+
+FAULTS = tuple(f.key for f in FAULT_SPECS)
+FAULT_BY_KEY = {f.key: f for f in FAULT_SPECS}
+
+#: Multipliers for the two drift bands, so the near band's boundary is stated in
+#: one place rather than buried in the injector.
+DRIFT_BANDS = {"quantity_drift_near": (1.1, 1.3), "quantity_drift_far": (1.6, 3.0)}
 
 
 @dataclass(slots=True)
@@ -183,10 +284,11 @@ def inject(
     if not items:
         return items, False
 
-    if fault == "quantity_drift":
+    if fault in DRIFT_BANDS:
+        low, high = DRIFT_BANDS[fault]
         index = rng.randrange(len(items))
         items[index] = items[index].model_copy(
-            update={"quantity_g": round(items[index].quantity_g * rng.uniform(1.6, 3.0), 1)}
+            update={"quantity_g": round(items[index].quantity_g * rng.uniform(low, high), 1)}
         )
         return items, True
 
@@ -248,6 +350,13 @@ def inject(
 
 
 def study_faults(db: FoodDB, engine: RuleEngine, n: int) -> list[FaultOutcome]:
+    """Inject each fault into a clean Stage-3 output and score the verifier on it.
+
+    ``n`` is larger than study A's on purpose. Choking bans exist only for
+    toddlers, so under the equal-share stratification only a third of the cases
+    can carry a re-introduced hazard at all -- and that is the fault class this
+    extension exists to catch, so it is the one that must not be thin.
+    """
     outcomes = {fault: FaultOutcome(fault=fault) for fault in FAULTS}
     provider = get_provider("template")
     rng = random.Random(SEED)
@@ -284,7 +393,7 @@ def study_faults(db: FoodDB, engine: RuleEngine, n: int) -> list[FaultOutcome]:
                         for i in final.items
                     )
                 )
-                or (fault == "quantity_drift" and not detected)
+                or (fault in DRIFT_BANDS and not detected)
                 or (fault == "inflated_claim" and not detected)
             )
             outcome.reached_user += int(survived)
@@ -300,12 +409,15 @@ def _pct(numerator: int, denominator: int) -> str:
     return "n/a" if not denominator else f"{numerator / denominator * 100:.0f}%"
 
 
-def render(observed: list[ProviderOutcome], faults: list[FaultOutcome], n: int) -> str:
+def render(
+    observed: list[ProviderOutcome], faults: list[FaultOutcome], n: int, n_faults: int
+) -> str:
     stamp = datetime.now(UTC).isoformat(timespec="seconds")
     lines = [
         "# Stage-4 verification: what it catches",
         "",
-        f"Generated by `experiments/run_verification_eval.py` at {stamp}, {n} cases per study.",
+        f"Generated by `experiments/run_verification_eval.py` at {stamp}: {n} cases in",
+        f"study A, {n_faults} age-stratified cases in study B.",
         "Every number came from a real run. Regenerate with `make eval`.",
         "",
         "## A. Observed error rates by Stage-3 provider",
@@ -332,12 +444,6 @@ def render(observed: list[ProviderOutcome], faults: list[FaultOutcome], n: int) 
 
     lines += [
         "",
-        "**Reading this honestly.** The template provider emits the optimiser's own items",
-        "unchanged, so there is nothing for Stage 4 to correct and its rates are near zero.",
-        "That is not evidence that verification is unnecessary -- it is evidence that the",
-        "offline path is already exact. Verification exists for the path where a generative",
-        "model rewrites the meal, which is what study B measures directly.",
-        "",
         "## B. Fault injection: what Stage 4 catches when something *is* wrong",
         "",
         "Faults of the kinds a language model actually produces are injected into Stage-3",
@@ -345,52 +451,139 @@ def render(observed: list[ProviderOutcome], faults: list[FaultOutcome], n: int) 
         "injected**; these rates describe a capability, not the observed error rate of any",
         "real model.",
         "",
-        "| Injected fault | Cases | Detected | Repaired | **Reached the user** |",
-        "|---|---|---|---|---|",
+        "The faults are reported in two blocks, because a single pooled detection rate",
+        "would overstate what this measures. Some faults are caught *by construction* --",
+        "the check and the injection consult the same fact, so detection cannot fail and",
+        "the resulting 100% says nothing about capability. The rest require the verifier",
+        "to independently recompute or re-derive something, and could genuinely miss.",
+        "**The second block is the real headline.** It is the smaller number and it is the",
+        "one that survives scrutiny.",
+        "",
     ]
-    total_n = total_detected = total_reached = 0
-    for outcome in faults:
-        if not outcome.n:
-            lines.append(f"| `{outcome.fault}` | 0 | n/a | n/a | n/a |")
-            continue
-        total_n += outcome.n
-        total_detected += outcome.detected
-        total_reached += outcome.reached_user
-        lines.append(
-            f"| `{outcome.fault}` | {outcome.n} | {_pct(outcome.detected, outcome.n)} "
-            f"| {_pct(outcome.repaired, outcome.n)} "
-            f"| **{_pct(outcome.reached_user, outcome.n)}** |"
-        )
-    if total_n:
-        lines.append(
-            f"| **all faults** | {total_n} | **{_pct(total_detected, total_n)}** | - "
-            f"| **{_pct(total_reached, total_n)}** |"
-        )
 
+    header = "| Injected fault | Cases | Detected | Repaired | **Reached the user** |"
+
+    def _block(kind: str) -> tuple[int, int, int]:
+        """Render one block and return its (cases, detected, reached-user) subtotal."""
+        block_n = block_detected = block_reached = 0
+        lines.append(header)
+        lines.append("|---|---|---|---|---|")
+        for outcome in faults:
+            if FAULT_BY_KEY[outcome.fault].kind != kind:
+                continue
+            if not outcome.n:
+                lines.append(f"| `{outcome.fault}` | 0 | n/a | n/a | n/a |")
+                continue
+            block_n += outcome.n
+            block_detected += outcome.detected
+            block_reached += outcome.reached_user
+            lines.append(
+                f"| `{outcome.fault}` | {outcome.n} | {_pct(outcome.detected, outcome.n)} "
+                f"| {_pct(outcome.repaired, outcome.n)} "
+                f"| **{_pct(outcome.reached_user, outcome.n)}** |"
+            )
+        return block_n, block_detected, block_reached
+
+    lines += ["### B1. Detected by construction -- not evidence of capability", ""]
+    c_n, c_detected, c_reached = _block("construction")
+    if c_n:
+        lines.append(
+            f"| **subtotal** | {c_n} | **{_pct(c_detected, c_n)}** | - "
+            f"| **{_pct(c_reached, c_n)}** |"
+        )
     lines += [
         "",
-        "### What each fault is",
+        "These three are worth running -- a regression that broke the id lookup or the",
+        "form check would show up here immediately -- but their detection rates are",
+        "arithmetic, not measurement. Read them as assertions that the guards are wired",
+        "up, and read the next block for what verification is actually worth.",
         "",
-        "| Fault | What is injected | Why a generator would do it |",
-        "|---|---|---|",
-        "| `quantity_drift` | An item's quantity multiplied by 1.6-3.0x | Models restate amounts from memory and drift |",
-        "| `hallucinated_food` | An item replaced by a plausible name with a fake id | The classic failure: a food that sounds real and is not |",
-        "| `impossible_form` | A preparation the food cannot take | Forms are text to a model; nothing stops it writing 'pureed steak' |",
-        "| `inflated_claim` | Nutrient totals overstated by 1.9x | Models assert nutrition figures confidently and wrongly |",
-        "| `reintroduced_hazard` | A repaired item put back in its unsafe form | A rewrite can undo the optimiser's safety fix without noticing |",
+        "### B2. Detected by re-derivation -- this is the real number",
         "",
-        "`reintroduced_hazard` is the one that matters most: it is the case where a",
-        "generative step silently undoes a safety decision the optimiser made. Stage 4",
-        "re-runs the same `RuleEngine` on the final list precisely so that a rewrite cannot",
-        "be the last word.",
+        "Here the verifier has to do independent work: recompute the meal's nutrients",
+        "from the database and compare against a claim made *before* the corruption, or",
+        "re-run the whole `RuleEngine` to re-derive a hazard from the food, its form and",
+        "the profile's age in months. Nothing in the corrupted item announces itself.",
         "",
     ]
+    r_n, r_detected, r_reached = _block("rederivation")
+    if r_n:
+        lines.append(
+            f"| **subtotal** | {r_n} | **{_pct(r_detected, r_n)}** | - "
+            f"| **{_pct(r_reached, r_n)}** |"
+        )
+
+    near = next((o for o in faults if o.fault == "quantity_drift_near"), None)
+    far = next((o for o in faults if o.fault == "quantity_drift_far"), None)
+    hazard = next((o for o in faults if o.fault == "reintroduced_hazard"), None)
+
+    lines += ["", "### Where quantity detection begins", ""]
+    if near and far and near.n and far.n:
+        lines += [
+            "The two drift bands are the same mechanism at two magnitudes. At 1.6-3.0x",
+            f"detection is {_pct(far.detected, far.n)}; at 1.1-1.3x it is",
+            f"{_pct(near.detected, near.n)}.",
+            "",
+            "The near band is reported precisely because it is the harder one, and its",
+            "misses are structural rather than accidental. The tolerance is applied to the",
+            "**meal total**, so drifting one item by 10-30% moves the total by rather less",
+            "than that whenever the item is a small share of the plate -- and a sub-tolerance",
+            "discrepancy is, by definition, one this layer has decided not to flag. Raising",
+            "detection here means tightening `nutrient_tolerance` or checking per item, both",
+            "of which trade against false positives on legitimate rounding.",
+            "",
+        ]
+    else:
+        lines += ["Not measured in this run.", ""]
+
+    if hazard and hazard.n:
+        lines += [
+            "### `reintroduced_hazard`, the fault the extension exists for",
+            "",
+            f"Measured over {hazard.n} cases: {_pct(hazard.detected, hazard.n)} detected,",
+            f"{_pct(hazard.reached_user, hazard.n)} reaching the user. This is the case where a",
+            "generative step silently undoes a safety decision the optimiser already made.",
+            "Stage 4 re-runs the same `RuleEngine` on the final item list precisely so that a",
+            "rewrite cannot be the last word.",
+            "",
+            "It is measured only on toddler cases, and that is not a sampling accident: the",
+            "choking bans are toddler rules, so no other profile admits the fault at all.",
+            "Study B stratifies by age group and runs more cases than study A specifically to",
+            "keep this cell from being thin.",
+            "",
+        ]
+
+    lines += [
+        "### What each fault is, and why it lands in the block it does",
+        "",
+        "| Fault | Block | What is injected | Why a generator would do it |",
+        "|---|---|---|---|",
+    ]
+    for spec in FAULT_SPECS:
+        block = "construction" if spec.kind == "construction" else "**re-derivation**"
+        lines.append(f"| `{spec.key}` | {block} | {spec.injected} | {spec.why} |")
+
+    lines += ["", "**Why each classification:**", ""]
+    for spec in FAULT_SPECS:
+        lines.append(f"- `{spec.key}` -- {spec.because}")
+    lines.append("")
+
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cases", type=int, default=90)
+    parser.add_argument("--cases", type=int, default=90, help="cases for study A")
+    parser.add_argument(
+        "--fault-cases",
+        type=int,
+        default=150,
+        help=(
+            "cases for study B. Larger than study A on purpose: the sample is "
+            "stratified by age group and only the toddler third can carry a "
+            "re-introduced hazard, so 150 keeps that cell at 50 rather than 30."
+        ),
+    )
     parser.add_argument("--providers", nargs="*", default=list(PROVIDERS))
     args = parser.parse_args(argv)
 
@@ -400,9 +593,9 @@ def main(argv: list[str] | None = None) -> int:
     print("Study A: observed rates by provider")
     observed = study_observed(db, engine, args.providers, args.cases)
     print("\nStudy B: fault injection")
-    faults = study_faults(db, engine, args.cases)
+    faults = study_faults(db, engine, args.fault_cases)
 
-    markdown = render(observed, faults, args.cases)
+    markdown = render(observed, faults, args.cases, args.fault_cases)
     (RESULTS_DIR / "verification_eval.md").write_text(markdown, encoding="utf-8")
     (RESULTS_DIR / "verification_eval.json").write_text(
         json.dumps(
@@ -418,6 +611,8 @@ def main(argv: list[str] | None = None) -> int:
                 ],
                 "faults": [dataclasses.asdict(f) for f in faults],
                 "n_cases": args.cases,
+                "n_fault_cases": args.fault_cases,
+                "fault_kinds": {f.key: f.kind for f in FAULT_SPECS},
             },
             indent=2,
             default=str,
@@ -425,10 +620,13 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
 
-    print(f"\n{'fault':<22} {'cases':>6} {'detected':>9} {'repaired':>9} {'reached user':>13}")
+    print(
+        f"\n{'fault':<22} {'kind':<13} {'cases':>6} {'detected':>9} {'repaired':>9} {'reached user':>13}"
+    )
     for outcome in faults:
         print(
-            f"{outcome.fault:<22} {outcome.n:>6} {_pct(outcome.detected, outcome.n):>9} "
+            f"{outcome.fault:<22} {FAULT_BY_KEY[outcome.fault].kind:<13} {outcome.n:>6} "
+            f"{_pct(outcome.detected, outcome.n):>9} "
             f"{_pct(outcome.repaired, outcome.n):>9} {_pct(outcome.reached_user, outcome.n):>13}"
         )
     print(f"\nwrote {RESULTS_DIR / 'verification_eval.md'}")

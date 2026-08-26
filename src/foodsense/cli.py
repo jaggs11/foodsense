@@ -94,7 +94,14 @@ def recommend(
         None, "--scenario", "-s", help="Built-in scenario key; see `foodsense scenarios`."
     ),
     provider: str = typer.Option(
-        "template", "--provider", "-p", help="template | anthropic | openai | ollama"
+        "template",
+        "--provider",
+        "-p",
+        help=(
+            "Stage-3 text generator. Default 'template' is fully offline and needs "
+            "no API key or network. 'anthropic' | 'openai' | 'ollama' opt into an "
+            "LLM and fall back to the template if it is unreachable."
+        ),
     ),
     as_json: bool = typer.Option(False, "--json", help="Print the raw PipelineTrace as JSON."),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Only the final recommendation."),
@@ -138,7 +145,12 @@ def recommend(
 
 @app.command()
 def demo(
-    provider: str = typer.Option("template", "--provider", "-p"),
+    provider: str = typer.Option(
+        "template",
+        "--provider",
+        "-p",
+        help="Offline by default; an LLM provider is opt-in. See `recommend --help`.",
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q"),
 ) -> None:
     """Run all three demo scenarios end to end. Offline, no API key."""

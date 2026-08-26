@@ -40,7 +40,7 @@ from foodsense.constraints.engine import RuleEngine
 from foodsense.schemas import UserProfile
 from foodsense.stage1_prediction.features import meal_features
 from foodsense.stage1_prediction.predict import SuitabilityModel
-from foodsense.stage2_optimizer.space import SearchSpace
+from foodsense.stage2_optimizer.space import SearchSpace, served_quantity
 
 __all__ = ["CounterfactualObjective", "ObjectiveConfig", "ObjectiveTerms", "meal_diff"]
 
@@ -60,7 +60,9 @@ class ObjectiveConfig:
     lambda_sparsity: float = 0.15
     big_penalty: float = 1000.0
     distance_scale_g: float = 200.0
-    quantity_epsilon_g: float = 2.0
+    #: Tolerance below which a *served* amount has not meaningfully moved. Not a
+    #: presence floor -- see ``space.MIN_SERVING_G`` for the three-way distinction.
+    change_epsilon_g: float = 2.0
     min_serving_g: float = 10.0
     lambda_form_preference: float = 0.05
     target_score: float = 0.70
@@ -76,7 +78,7 @@ class ObjectiveConfig:
             lambda_sparsity=float(stage2.get("lambda_sparsity", 0.15)),
             big_penalty=float(stage2.get("big_penalty", 1000.0)),
             distance_scale_g=float(stage2.get("distance_scale_g", 200.0)),
-            quantity_epsilon_g=float(stage2.get("quantity_epsilon_g", 2.0)),
+            change_epsilon_g=float(stage2.get("change_epsilon_g", 2.0)),
             min_serving_g=float(stage2.get("min_serving_g", 10.0)),
             lambda_form_preference=float(stage2.get("lambda_form_preference", 0.05)),
             target_score=float(stage1.get("target_score", 0.70)),
@@ -104,22 +106,25 @@ class ObjectiveTerms:
 
 
 def meal_diff(
-    space: SearchSpace, x: np.ndarray, epsilon_g: float
+    space: SearchSpace, x: np.ndarray, change_epsilon_g: float, min_serving_g: float
 ) -> tuple[float, float, int, float]:
     """L1 grams, L2 grams and the number of items changed, against the planned meal.
 
-    An item counts as changed if its quantity moved by more than ``epsilon_g`` *or*
-    its form changed. Form matters even at identical grams -- re-quartering the
-    grapes is an edit the user has to perform, and the sparsity term should say so.
+    Two different thresholds, and conflating them was a real bug. ``min_serving_g``
+    decides whether the food is *on the plate*, and must be the same floor the
+    decoder applies -- otherwise the objective prices an edit the decoded meal does
+    not contain. ``change_epsilon_g`` then decides whether a served amount counts
+    as having *moved*, which is only a guard against floating-point noise.
+
+    Form matters even at identical grams -- re-quartering the grapes is an edit the
+    user has to perform, and the sparsity term should say so.
     """
     l1 = 0.0
     squared = 0.0
     n_changed = 0
     form_cost = 0.0
     for i, variable in enumerate(space.variables):
-        quantity = float(x[2 * i])
-        if quantity < epsilon_g:
-            quantity = 0.0
+        quantity = served_quantity(x[2 * i], variable, min_serving_g)
         delta = quantity - variable.planned_quantity_g
         l1 += abs(delta)
         squared += delta * delta
@@ -128,7 +133,7 @@ def meal_diff(
         form_changed = quantity > 0 and form_index != variable.planned_form_index
         if quantity > 0 and variable.form_costs:
             form_cost += variable.form_costs[form_index]
-        if abs(delta) > epsilon_g or form_changed:
+        if abs(delta) > change_epsilon_g or form_changed:
             n_changed += 1
     return l1, float(np.sqrt(squared)), n_changed, form_cost
 
@@ -222,7 +227,7 @@ class CounterfactualObjective:
                 continue
 
             l1, l2, n_changed, form_cost = meal_diff(
-                self.space, population[i], config.quantity_epsilon_g
+                self.space, population[i], config.change_epsilon_g, config.min_serving_g
             )
             validity = config.lambda_validity * max(0.0, config.target_score - suitability[i])
             distance = (

@@ -355,21 +355,55 @@ class _RetryingLLMProvider(LLMProvider):
     def _complete(self, prompt: str, attempt: int) -> str: ...
 
 
+#: Model strings checked against the published model list at
+#: https://platform.claude.com/docs/en/docs/about-claude/models/overview on
+#: 2026-08-26. Recorded rather than remembered: a wrong model string is a 404 in
+#: front of an audience, and this file is the kind that gets written once and
+#: read a year later.
+#:
+#: Current at that date: claude-fable-5, claude-opus-5, claude-sonnet-5,
+#: claude-haiku-4-5(-20251001). Legacy but still served: claude-opus-4-8/4-7/4-6,
+#: claude-sonnet-4-6, claude-opus-4-5, claude-sonnet-4-5.
+ANTHROPIC_MODELS_CHECKED_ON = "2026-08-26"
+
+
 class AnthropicProvider(_RetryingLLMProvider):
     """Claude via the official Anthropic SDK.
 
-    Note on ``temperature``: Claude Sonnet 4.6 accepts it, which is why the design
-    brief's 0.2 is honoured here. Newer models (Opus 5, Sonnet 5, Fable 5) removed
-    sampling parameters and reject them with a 400, so the parameter is only sent
-    when the configured model is known to take it.
+    Note on ``temperature``. The Messages API deprecated the sampling parameters:
+    models released after Claude Opus 4.6 reject any temperature other than 1.0
+    with a 400. The design brief asks for 0.2, so it is sent only to models known
+    to accept it and omitted everywhere else.
+
+    The direction of that test matters and is the reason it is an allow-list
+    rather than a deny-list. Omitting the parameter is accepted by every model
+    that ever existed; sending it to a model that has dropped it is a hard
+    failure. An unrecognised model string -- a newer one, or a typo -- therefore
+    has to fall on the side that cannot 400.
     """
 
     name = "anthropic"
 
-    #: Models that still accept sampling parameters.
-    _SAMPLING_MODELS = ("claude-sonnet-4-6", "claude-opus-4-6")
+    #: Models that still accept sampling parameters, i.e. those released up to and
+    #: including Claude Opus 4.6. Matched as a prefix so dated snapshots
+    #: ("claude-haiku-4-5-20251001") resolve the same way as their aliases.
+    #: Anything not listed here is sent *without* a temperature.
+    _SAMPLING_MODELS = (
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+        "claude-haiku-4-5",
+        "claude-sonnet-4-5",
+        "claude-opus-4-5",
+    )
 
-    def __init__(self, model: str = "claude-sonnet-4-6", temperature: float = 0.2) -> None:
+    #: Default is a current model rather than the newest or the cheapest. Stage 3
+    #: writes a short strict-JSON object from a diff that is already computed, so
+    #: frontier reasoning buys nothing here; what it needs is a model that is not
+    #: about to be retired. Sonnet 5 does not take a temperature, which is why the
+    #: guard above exists and is exercised by the shipped default.
+    DEFAULT_MODEL = "claude-sonnet-5"
+
+    def __init__(self, model: str = DEFAULT_MODEL, temperature: float = 0.2) -> None:
         self.model = model
         self.temperature = temperature
 

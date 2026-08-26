@@ -32,17 +32,47 @@ import numpy as np
 from foodsense.data.fdc import FoodDB, FoodRecord, get_food_db
 from foodsense.schemas import Form, Meal, MealItem, UserProfile
 
-__all__ = ["SearchSpace", "Variable", "build_space"]
+__all__ = ["SearchSpace", "Variable", "build_space", "served_quantity"]
 
 #: Quantities are decoded to this resolution. Sub-gram precision is meaningless
 #: for a recommendation a person has to act on, and rounding keeps "unchanged"
 #: genuinely unchanged rather than 40.0000001 g.
 QUANTITY_RESOLUTION_G = 1.0
 
-#: Smallest amount that counts as being in the meal at all. Distinct from the
-#: objective's ``quantity_epsilon_g``, which is the threshold for calling an
-#: amount *changed*.
+#: Smallest amount that counts as being in the meal at all -- the *presence*
+#: threshold. One of three numbers in this pipeline that all measure grams and
+#: mean different things, so to be explicit:
+#:
+#: ``MIN_SERVING_G`` (here, 10 g)
+#:     Below this, the food is not served. It is not a small portion, it is no
+#:     portion. Owned by :func:`served_quantity` and used by every consumer of a
+#:     decision vector, so the decoder and the objective's diff cannot disagree
+#:     about what is on the plate.
+#: ``change_epsilon_g`` (``ObjectiveConfig``, 2 g)
+#:     The *no-op* tolerance. A served amount that moved by less than this is not
+#:     an edit; without it, floating-point noise reads as one.
+#: ``build_diff(change_epsilon_g=...)`` (Stage 3)
+#:     The same idea one stage later, applied to already-decoded meals so the
+#:     user-facing diff reports exactly the edits the optimiser paid for.
 MIN_SERVING_G = 10.0
+
+
+def served_quantity(
+    raw_g: float, variable: Variable, min_serving_g: float = MIN_SERVING_G
+) -> float:
+    """Grams of ``variable`` that actually reach the plate, for a raw decision value.
+
+    The single definition of "is this food in the meal, and how much of it".
+    :meth:`SearchSpace.decode` and the objective's ``meal_diff`` both call it, and
+    that is the point: they used to apply different floors, so the optimiser was
+    charged L1 distance and a sparsity increment for a 5 g pantry addition that
+    the decoder then dropped -- paying for an edit that never appeared in the
+    meal, and under-counting the L1 of a planned item it had shrunk to nothing.
+    """
+    quantity = round(float(raw_g) / QUANTITY_RESOLUTION_G) * QUANTITY_RESOLUTION_G
+    if quantity < min_serving_g:
+        return 0.0
+    return min(quantity, variable.max_quantity_g)
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,8 +162,8 @@ class SearchSpace:
         """
         items: list[MealItem] = []
         for i, variable in enumerate(self.variables):
-            quantity = round(float(x[2 * i]) / QUANTITY_RESOLUTION_G) * QUANTITY_RESOLUTION_G
-            if quantity < min_serving_g:
+            quantity = served_quantity(x[2 * i], variable, min_serving_g)
+            if quantity <= 0.0:
                 continue
             # Plain min/max rather than np.clip: this runs once per item per
             # candidate, and numpy's scalar path costs more than the arithmetic.
@@ -142,7 +172,7 @@ class SearchSpace:
                 MealItem(
                     food_id=variable.food_id,
                     name=variable.name,
-                    quantity_g=min(quantity, variable.max_quantity_g),
+                    quantity_g=quantity,
                     form=variable.forms[index],
                 )
             )

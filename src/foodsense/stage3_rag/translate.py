@@ -38,7 +38,10 @@ __all__ = ["build_diff", "translate"]
 
 
 def build_diff(
-    planned: Meal, optimized: Meal, violations: list[Violation], epsilon_g: float = 2.0
+    planned: Meal,
+    optimized: Meal,
+    violations: list[Violation],
+    change_epsilon_g: float = 2.0,
 ) -> MealDiff:
     """What changed between two meals, with a reason attached where one exists."""
     planned_by_id = {i.food_id: i for i in planned.items}
@@ -73,7 +76,7 @@ def build_diff(
         elif after is None and before is not None:
             change_type = "removed"
             reason = reason or "removed to make room for a better fit"
-        elif before and after and (abs(delta) > epsilon_g or before.form != after.form):
+        elif before and after and (abs(delta) > change_epsilon_g or before.form != after.form):
             change_type = "modified"
         else:
             change_type = "unchanged"

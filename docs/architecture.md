@@ -207,6 +207,22 @@ project's central robustness claim: the LLM is an enhancement layer, never a
 dependency. It is also the fallback for every other provider, so its output quality
 sets the floor for the whole system.
 
+Concretely: **every command runs offline unless you ask otherwise.** `make demo`,
+`foodsense recommend`, `foodsense scenarios`, the test suite and every experiment in
+`experiments/` use the template provider and touch no network. An LLM is reached only
+by passing `--provider anthropic|openai|ollama` explicitly, and even then a missing
+key, a missing package or an unreachable endpoint degrades to the template with the
+reason recorded in `trace.warnings` rather than raising.
+
+The Anthropic model id is pinned in `configs/pipeline.yaml` and was checked against
+the published model list on 2026-08-26; `providers.py` records the date and the
+lineup it was checked against. Sampling parameters are the one place the model id
+changes the request shape -- models after Claude Opus 4.6 reject a `temperature`
+other than 1.0 with a 400 -- so the provider sends the brief's 0.2 only to models
+known to accept it, and omits it for anything unrecognised. That direction is
+deliberate: omitting always works, sending can fail, and an unknown id is more
+likely to be newer than the list than older.
+
 Every provider answers the same contract:
 
 ```json

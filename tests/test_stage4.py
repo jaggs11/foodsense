@@ -250,6 +250,83 @@ class TestProviderContract:
             get_provider("gemini")
 
 
+class TestTheAnthropicSamplingGuard:
+    """``temperature`` is sent to models that take it and to no others.
+
+    The Messages API deprecated the sampling parameters: a model released after
+    Claude Opus 4.6 rejects any temperature but 1.0 with a 400. The design brief
+    asks for 0.2. So the request has to be built differently per model, and the
+    consequence of getting it wrong is a hard failure in front of an audience --
+    which makes it worth a test that never touches the network.
+
+    The stub stands in for ``anthropic.Anthropic`` and records the kwargs it was
+    handed, so these assert the *request that would be sent*, not a response.
+    """
+
+    @staticmethod
+    def _sent(monkeypatch, model: str) -> dict:
+        import sys
+        import types
+
+        captured: dict = {}
+
+        class _Messages:
+            @staticmethod
+            def create(**kwargs):
+                captured.update(kwargs)
+                block = types.SimpleNamespace(
+                    type="text", text='{"items": [], "text": "", "rationale": []}'
+                )
+                return types.SimpleNamespace(content=[block])
+
+        class _Anthropic:
+            def __init__(self, *args, **kwargs):
+                self.messages = _Messages()
+
+        stub = types.ModuleType("anthropic")
+        stub.Anthropic = _Anthropic
+        monkeypatch.setitem(sys.modules, "anthropic", stub)
+
+        AnthropicProvider(model=model, temperature=0.2)._complete("prompt", 0)
+        return captured
+
+    def test_it_is_omitted_for_a_model_that_rejects_it(self, monkeypatch):
+        """Sonnet 5 is the shipped default, so the guard is exercised by default."""
+        sent = self._sent(monkeypatch, "claude-sonnet-5")
+        assert "temperature" not in sent
+        assert sent["model"] == "claude-sonnet-5"
+
+    def test_it_is_included_for_a_model_that_accepts_it(self, monkeypatch):
+        sent = self._sent(monkeypatch, "claude-sonnet-4-6")
+        assert sent["temperature"] == pytest.approx(0.2)
+
+    def test_a_dated_snapshot_matches_its_alias(self, monkeypatch):
+        """Model ids are matched as a prefix so pinned snapshots behave identically."""
+        sent = self._sent(monkeypatch, "claude-haiku-4-5-20251001")
+        assert sent["temperature"] == pytest.approx(0.2)
+
+    def test_an_unrecognised_model_omits_it(self, monkeypatch):
+        """The safe direction. Omitting always works; sending can 400.
+
+        A model string this file has never heard of is far more likely to be newer
+        than the list than older, so the unknown case must not send a parameter.
+        """
+        sent = self._sent(monkeypatch, "claude-something-9")
+        assert "temperature" not in sent
+
+    def test_the_shipped_default_is_a_model_the_docs_still_list(self):
+        """Guards against the default quietly rotting into a retired model id.
+
+        Checked against the published list on the date recorded in the module; if
+        this ever needs changing, re-check the list rather than editing the tuple.
+        """
+        from foodsense.stage3_rag.providers import ANTHROPIC_MODELS_CHECKED_ON
+
+        current = {"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"}
+        assert AnthropicProvider.DEFAULT_MODEL in current
+        assert ANTHROPIC_MODELS_CHECKED_ON
+
+
 class TestPromptAndParsing:
     def test_the_prompt_grounds_the_model_in_real_ids(self, request_for):
         prompt = build_prompt(request_for)
@@ -470,3 +547,101 @@ class TestDiff:
         diff = build_diff(planned, optimized, violations)
         change = next(c for c in diff.changes if c.food_id == grapes.fdc_id)
         assert change.reason and "choking" in change.reason.lower()
+
+
+class TestTheSecondRepairPass:
+    """The pass that exists because one item can break two rules at once.
+
+    Re-forming answers the rule about *preparation*. It cannot answer a rule about
+    the food itself, so an item can survive the first pass still unsafe. These
+    assert the three things that make the Stage-4 headline claim mean anything:
+    the offending item is genuinely gone from the returned meal, the safety-fix
+    log describes that same meal rather than an earlier draft of it, and
+    ``final_pass`` is only True when nothing unsafe survived.
+    """
+
+    @pytest.fixture(scope="class")
+    def double_bind(self, db):
+        """A frankfurter for someone with dysphagia *and* an MAOI prescription.
+
+        Mincing it satisfies the texture rule and does nothing about the tyramine,
+        which is exactly the shape the second pass is for. Both foods are real
+        rows in the curated database, pinned by id.
+        """
+        profile = UserProfile(
+            age_group=AgeGroup.OLDER_ADULT,
+            age_months=70 * 12,
+            weight_kg=68.0,
+            goal=Goal.BALANCED_NUTRITION,
+            health_flags=[HealthFlag.DYSPHAGIA, HealthFlag.MAOI],
+        )
+        frankfurter = db.find("174614")
+        rice = db.find("168878")
+        assert frankfurter is not None and rice is not None
+        items = [
+            MealItem(
+                food_id=frankfurter.fdc_id,
+                name=frankfurter.name,
+                quantity_g=60.0,
+                form=Form.WHOLE,
+            ),
+            MealItem(food_id=rice.fdc_id, name=rice.name, quantity_g=120.0, form=Form.SOFT_COOKED),
+        ]
+        return profile, items, frankfurter.fdc_id
+
+    def test_the_setup_really_does_break_two_rules_at_once(self, double_bind, engine):
+        """Guard: if only one rule fired, the first pass would settle it."""
+        profile, items, _ = double_bind
+        rules = {v.rule_id for v in engine.evaluate(items, profile).hard_violations}
+        assert "flag.dysphagia.texture" in rules
+        assert "flag.maoi.excluded_food" in rules
+
+    def test_the_removed_item_is_absent_from_the_returned_meal(self, double_bind, db, engine):
+        profile, items, offender = double_bind
+        final, _ = verify(items, profile, db=db, engine=engine)
+        assert offender not in final.food_ids()
+        assert final.items, "the repair removed the whole meal"
+
+    def test_the_log_and_the_meal_describe_the_same_plate(self, double_bind, db, engine):
+        """A log claiming a food was re-formed, for a food that is not there, is a lie.
+
+        The first pass minces the frankfurter and records it; the second pass then
+        removes it. Leaving both entries in would tell a reader the meal contains
+        minced frankfurter, so the superseded entry is dropped.
+        """
+        profile, items, _ = double_bind
+        final, report = verify(items, profile, db=db, engine=engine)
+        served = final.food_ids()
+        for fix in report.safety_fixes:
+            if fix.action == "remove":
+                assert fix.food_id not in served, f"{fix.name} logged removed but still served"
+            elif fix.action == "reform":
+                assert fix.food_id in served, f"{fix.name} logged re-formed but not served"
+
+    def test_final_pass_is_true_only_when_nothing_unsafe_survived(self, double_bind, db, engine):
+        profile, items, _ = double_bind
+        final, report = verify(items, profile, db=db, engine=engine)
+        assert report.final_pass is engine.evaluate(final, profile).is_safe
+
+    def test_an_unfixable_meal_reports_failure_rather_than_looping(self, db, engine):
+        """Numeric hard rules have no offending item, so no repair can reach them.
+
+        The honest outcome is ``final_pass=False`` with the violation flagged --
+        not a silent pass, and not an unbounded repair loop.
+        """
+        profile = UserProfile(
+            age_group=AgeGroup.OLDER_ADULT,
+            age_months=70 * 12,
+            weight_kg=68.0,
+            goal=Goal.BALANCED_NUTRITION,
+            health_flags=[HealthFlag.HYPERTENSION],
+        )
+        soup = db.find("172882")
+        assert soup is not None
+        items = [
+            MealItem(food_id=soup.fdc_id, name=soup.name, quantity_g=400.0, form=Form.SOFT_COOKED)
+        ]
+        final, report = verify(items, profile, db=db, engine=engine)
+        assert not report.final_pass
+        assert any(v.rule_id == "flag.hypertension.sodium_mg" for v in report.flagged)
+        assert final.items, "an unrepairable numeric rule must not empty the plate"

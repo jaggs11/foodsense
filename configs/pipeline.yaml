@@ -115,14 +115,21 @@ stage2:
   # returned the meal untouched. Relative to the meal, the same edit costs 0.24.
   distance_scale_g: 150.0
 
-  # A quantity moved by less than this is not counted as a change; without it,
-  # floating-point noise reads as an edit.
-  quantity_epsilon_g: 2.0
+  # Two thresholds that both measure grams and mean different things. They were
+  # briefly conflated inside the objective's diff, which charged the optimiser L1
+  # distance and a sparsity increment for sub-serving additions the decoder then
+  # dropped -- an edit it paid for but never made.
+  #
+  # change_epsilon_g: a *served* amount that moved by less than this has not
+  # changed. Purely a guard against floating-point noise reading as an edit.
+  change_epsilon_g: 2.0
 
-  # Smallest amount that counts as being in the meal at all -- a separate idea
-  # from the epsilon above. Without a floor the optimiser finds that a two-gram
-  # sliver of lentils nudges the fibre score at almost no distance cost, and
-  # returns a meal with three garnish-sized additions nobody would serve.
+  # min_serving_g: the presence floor -- below this the food is not on the plate
+  # at all. Without it the optimiser finds that a two-gram sliver of lentils
+  # nudges the fibre score at almost no distance cost, and returns a meal with
+  # three garnish-sized additions nobody would serve. Applied by a single
+  # function (`space.served_quantity`) that the decoder and the diff share, so
+  # the two cannot drift apart again.
   min_serving_g: 10.0
 
   # Preference for the config's declared nearest-safe-form when a hazard has to
@@ -155,7 +162,11 @@ stage3:
   temperature: 0.2
   max_retries: 1
   retrieval_top_k: 5
-  anthropic_model: claude-sonnet-4-6
+  # Checked against the published model list on 2026-08-26. Sonnet 5 is current;
+  # claude-sonnet-4-6 (the previous default here) is now legacy. Models released
+  # after Opus 4.6 reject a temperature other than 1.0 with a 400, so the
+  # provider omits the value below for them -- see stage3_rag/providers.py.
+  anthropic_model: claude-sonnet-5
   openai_model: gpt-4o-mini
   ollama_model: llama3.1
 

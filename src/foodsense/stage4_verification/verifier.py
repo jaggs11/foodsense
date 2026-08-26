@@ -231,14 +231,17 @@ def _repair(
             )
         )
 
-    # A repair can uncover a second violation -- re-forming one item does not make
-    # another safe. One more pass catches that; beyond two the meal is genuinely
-    # unfixable and `final_pass` will say so rather than looping.
+    # A repair can uncover a second violation. Re-forming fixes the *form* rule
+    # that fired, but an item can be caught by two rules at once -- a frankfurter
+    # served to someone with dysphagia and an MAOI prescription is both the wrong
+    # texture and a tyramine risk, and mincing it only answers the first. One more
+    # pass catches that; beyond two the meal is genuinely unfixable and
+    # `final_pass` will say so rather than looping.
     if repaired != items and engine.evaluate(repaired, profile).hard_violations:
         still_offending: set[str] = set()
         for violation in engine.evaluate(repaired, profile).hard_violations:
             still_offending.update(violation.offending_items)
-        survivors = []
+        survivors: list[MealItem] = []
         for item in repaired:
             if item.food_id in still_offending:
                 report.safety_fixes.append(
@@ -248,9 +251,22 @@ def _repair(
                         name=item.name,
                         action="remove",
                         old_form=item.form,
-                        message=f"{item.name} remained unsafe after re-forming; removed.",
+                        message=(
+                            f"{item.name} was still unsafe as {item.form.value}; "
+                            f"no preparation satisfies every rule that applies, so it "
+                            f"was removed."
+                        ),
                     )
                 )
+                # The first pass logged a re-form for this item that the removal
+                # has now undone. Leaving it in would make the log claim the food
+                # is on the plate in a different form when it is not there at all,
+                # and the log is the only account a reader gets of what Stage 4 did.
+                report.safety_fixes = [
+                    fix
+                    for fix in report.safety_fixes
+                    if not (fix.rule_id == "verification.reformed" and fix.food_id == item.food_id)
+                ]
                 continue
             survivors.append(item)
         repaired = survivors
