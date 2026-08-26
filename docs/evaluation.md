@@ -21,6 +21,37 @@ make eval      # or ./make.ps1 eval on Windows
 | `experiments/run_dataset_comparison.py` | `results/dataset_comparison.md` | Stage-1 RMSE / R^2 / thresholded AUC on Food.com vs Nutrition5k |
 | `experiments/run_llm_benchmark.py` | `results/llm_benchmark.md` | macro RMSE, goal consistency, diversity by provider |
 
+## A verification gap that was found the hard way
+
+Worth recording, because the shape of the mistake generalises.
+
+`foodsense serve` shipped broken. The `api` package sat at the repository root
+and was never installed — `pyproject.toml` packages `src/` only — so
+`from foodsense.api.main import ...` resolved solely when the process happened to
+start in the repo root. Run from anywhere else, the command raised
+`ModuleNotFoundError`.
+
+**538 tests passed against it**, including tests that imported the API and
+exercised every endpoint, because `pyproject.toml` carried `pythonpath = ["."]`
+for pytest. The suite was testing an import path the shipped CLI did not have.
+The Phase-6 clean-clone verification did not catch it either: it ran `pytest` and
+`foodsense demo` from inside the clone, and never ran `serve` from a different
+working directory — so the one command with the defect was the one command not
+exercised.
+
+Two things changed. The package moved to `src/foodsense/api/` and is installed
+like everything else, and the `pythonpath` hack is gone, so the tests now import
+it the way the CLI does. `tests/test_api.py` adds five tests that assert the
+property rather than the behaviour: that the module resolves from *inside the
+installed package*, and that importing it — and running `serve --help` — works in
+a subprocess started in a temporary directory. A subprocess is the only honest
+check here; an in-process import proves nothing when pytest has already arranged
+`sys.path` to its liking.
+
+The general lesson: **a test that passes because of the harness is not evidence
+about the product.** Anything that only works from one working directory should
+be tested from a different one.
+
 ## Reading the results honestly
 
 Three habits this project holds itself to, because each of them is a way a results

@@ -36,7 +36,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.models import (
+from foodsense import __version__
+from foodsense.api.models import (
     CustomRequest,
     FoodSummary,
     HealthResponse,
@@ -44,13 +45,48 @@ from api.models import (
     ScenarioRequest,
     ScenarioSummary,
 )
-from foodsense import __version__
 from foodsense.data.fdc import get_food_db
 from foodsense.schemas import Meal, PipelineTrace
 
-#: Built frontend. Absent until `npm run build` has run, which is not an error --
-#: the API is useful on its own and `foodsense serve` says so.
-FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+
+def _find_frontend_dist() -> Path:
+    """Locate the built UI, from wherever this package happens to be installed.
+
+    This used to be a single path relative to the repo root, which quietly
+    assumed the process was started *in* a source checkout. It is not: the CLI
+    is installed, and `foodsense serve` run from any other directory could not
+    even import this module, let alone find the bundle.
+
+    Three places, in order of specificity:
+
+    1. ``FOODSENSE_FRONTEND_DIST`` -- an explicit override, for anyone serving a
+       bundle built elsewhere.
+    2. ``static/`` inside this package -- where a packaged build would live.
+    3. ``frontend/dist`` in an ancestor directory -- the source-checkout case,
+       found by walking up from this file rather than from the current working
+       directory, so it does not matter where the process was started.
+
+    Returns the first that exists; failing all three, returns the packaged path
+    so the caller has something concrete to report as missing. A missing bundle
+    is not an error -- the API is useful without it and `foodsense serve` says so.
+    """
+    override = os.environ.get("FOODSENSE_FRONTEND_DIST")
+    if override:
+        return Path(override).expanduser().resolve()
+
+    packaged = Path(__file__).resolve().parent / "static"
+    if (packaged / "index.html").exists():
+        return packaged
+
+    for ancestor in Path(__file__).resolve().parents:
+        candidate = ancestor / "frontend" / "dist"
+        if (candidate / "index.html").exists():
+            return candidate
+    return packaged
+
+
+#: Built frontend, resolved once at import.
+FRONTEND_DIST = _find_frontend_dist()
 
 #: Dev-mode origins allowed to call the API cross-origin. Only ever localhost:
 #: in the shipped shape the frontend is served by this same app, so there is no

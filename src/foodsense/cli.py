@@ -347,7 +347,8 @@ def serve(
     the Wi-Fi off and it still works.
     """
     import uvicorn
-    from api.main import FRONTEND_DIST
+
+    from foodsense.api.main import FRONTEND_DIST
 
     url = f"http://{host}:{port}"
     if (FRONTEND_DIST / "index.html").exists():
@@ -372,7 +373,7 @@ def serve(
         # not opened against a port that is not listening yet.
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
-    uvicorn.run("api.main:app", host=host, port=port, log_level="info")
+    uvicorn.run("foodsense.api.main:app", host=host, port=port, log_level="info")
 
 
 if __name__ == "__main__":  # pragma: no cover

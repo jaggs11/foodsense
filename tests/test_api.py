@@ -20,10 +20,16 @@ one.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
 import pytest
-from api.main import app
 from fastapi.testclient import TestClient
 
+from foodsense.api.main import app
 from foodsense.stage1_prediction.predict import LIGHTGBM_PATH
 
 needs_model = pytest.mark.skipif(
@@ -371,3 +377,92 @@ class TestTheToddlerHeadline:
     def test_the_explanation_names_the_hazard(self, trace):
         text = (trace["stage3"]["text"] + " ".join(trace["stage3"]["rationale"])).lower()
         assert "grape" in text
+
+
+class TestTheApiIsImportableTheWayTheCliImportsIt:
+    """The API must be reachable from the *installed distribution*, not the repo.
+
+    This exists because it was not. `api/` lived at the repository root and was
+    never packaged, while `pyproject.toml` put "." on pytest's `pythonpath` so
+    the suite could still `from api.main import app`. The result was 538 passing
+    tests against an import path the shipped CLI did not have: `foodsense serve`
+    worked when the working directory happened to be the repo root and raised
+    ModuleNotFoundError everywhere else.
+
+    So these assert the property the old tests assumed: that the import works
+    because the package is installed, not because of where the process started.
+    """
+
+    def test_the_api_module_lives_inside_the_installed_package(self):
+        """A path under site-packages, or under src/ for an editable install.
+
+        Either way it is inside `foodsense`, which is what makes it importable
+        from any working directory.
+        """
+        import foodsense
+        import foodsense.api.main
+
+        package_root = Path(foodsense.__file__).resolve().parent
+        module = Path(foodsense.api.main.__file__).resolve()
+        assert package_root in module.parents
+
+    def test_importing_it_does_not_depend_on_the_working_directory(self):
+        """Import it in a subprocess started somewhere else entirely.
+
+        A subprocess is the only honest way to check this: the module is already
+        in `sys.modules` here, and this test process was started from the repo
+        root with pytest's own path setup, so an in-process import proves
+        nothing about the shipped CLI.
+        """
+        result = subprocess.run(
+            [sys.executable, "-c", "import foodsense.api.main as m; print(m.app.title)"],
+            capture_output=True,
+            text=True,
+            cwd=tempfile.gettempdir(),
+        )
+        assert result.returncode == 0, result.stderr
+        assert "FoodSense" in result.stdout
+
+    def test_the_cli_can_resolve_what_serve_needs_from_elsewhere(self):
+        """`serve` imports FRONTEND_DIST at call time; that is the line that broke."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from foodsense.api.main import FRONTEND_DIST; print(FRONTEND_DIST)",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=tempfile.gettempdir(),
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip()
+
+    def test_serve_help_works_from_another_directory(self):
+        """End to end through the CLI entry point, from a directory that is not ours."""
+        # Decoded as UTF-8 explicitly. The CLI re-encodes its own streams so Rich
+        # box-drawing survives a cp1252 console; a parent that decodes with the
+        # ambient Windows codepage then chokes on those same bytes and hands back
+        # a None stdout, which looks exactly like a crash and is not one.
+        result = subprocess.run(
+            [sys.executable, "-m", "foodsense.cli", "serve", "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=tempfile.gettempdir(),
+        )
+        assert result.returncode == 0, result.stderr
+        assert "--port" in result.stdout
+
+    def test_the_frontend_path_is_anchored_to_the_module_not_the_cwd(self):
+        """Resolved by walking up from the module file, so cwd cannot change it."""
+        from foodsense.api.main import _find_frontend_dist
+
+        here = _find_frontend_dist()
+        original = os.getcwd()
+        try:
+            os.chdir(tempfile.gettempdir())
+            assert _find_frontend_dist() == here
+        finally:
+            os.chdir(original)

@@ -47,7 +47,7 @@ EXPECTED_PATHS = [
     "README.md",
     ".env.example",
     ".github/workflows/ci.yml",
-    "api/main.py",
+    "src/foodsense/api/main.py",
     "data/README.md",
     "docs/architecture.md",
 ]
@@ -77,8 +77,9 @@ def test_config_dir_exists():
 
 
 def test_api_health_endpoint():
-    from api.main import app
     from fastapi.testclient import TestClient
+
+    from foodsense.api.main import app
 
     response = TestClient(app).get("/api/health")
     assert response.status_code == 200

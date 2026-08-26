@@ -487,10 +487,10 @@ src/foodsense/
 ├── stage2_optimizer/      # search space, objective, differential evolution, baselines
 ├── stage3_rag/            # BM25 retriever, LLM providers, translation
 ├── stage4_verification/   # the verifier
+├── api/                   # FastAPI: /api/recommend, /api/scenarios, /api/foods
 ├── pipeline.py            # run_pipeline(profile, planned_meal, pantry) -> PipelineTrace
-└── cli.py                 # foodsense recommend / demo
-api/                       # FastAPI: /api/recommend, /api/scenarios, /api/foods
-frontend/                  # Vite + React + Tailwind single-page UI
+└── cli.py                 # foodsense recommend / demo / serve
+frontend/                  # Vite + React + Tailwind single-page UI (built to dist/)
 experiments/               # every script that writes into results/
 configs/                   # goal + age-group YAML (sourced to NASEM DRI, AAP/CDC, AHA...)
 docs/                      # architecture, evaluation, traceability, demo script

@@ -102,9 +102,12 @@ quote-style = "double"
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-# Makes the repo root importable so tests can `from api.main import app`
-# (the `api` package is intentionally not installed into site-packages).
-pythonpath = ["."]
+# Deliberately no `pythonpath` entry. It used to carry "." so tests could
+# `from api.main import app` while the api package sat un-installed at the repo
+# root -- which meant the whole suite passed against an import path the shipped
+# CLI did not have, and `foodsense serve` crashed for anyone running it from
+# another directory. The API now lives under src/ like everything else, and the
+# tests import it exactly as the CLI does.
 addopts = "-q --strict-markers"
 markers = [
     "slow: long-running tests (optimizer sweeps, full training); excluded in CI",
