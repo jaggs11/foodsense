@@ -49,6 +49,7 @@ from sklearn.model_selection import GroupShuffleSplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from foodsense import MODELS_DIR as ROOT_MODELS
 from foodsense import RESULTS_DIR
 from foodsense.constraints.engine import RuleEngine
 from foodsense.data.corpora import load_meals
@@ -168,6 +169,20 @@ def main(argv: list[str] | None = None) -> int:
     flip_gap = (predicted - truth)[optimistic]
     near_flip_gap = (predicted - truth)[optimistic & near_mask]
 
+    # Read the trained model's own reported figure rather than restating it. This
+    # file's whole argument is that the reported RMSE means something different
+    # from what it looks like, so quoting a stale copy of it would be a poor way
+    # to make that point.
+    reported_rmse = "~0.057"
+    metrics_path = ROOT_MODELS / "stage1_metrics.json"
+    if metrics_path.exists():
+        try:
+            reported = json.loads(metrics_path.read_text(encoding="utf-8"))
+            value = reported["models"]["lightgbm"]["foodcom_holdout"]["rmse"]
+            reported_rmse = f"{value:.4f}"
+        except (json.JSONDecodeError, KeyError, TypeError, OSError):
+            pass
+
     stamp = datetime.now(UTC).isoformat(timespec="seconds")
     lines = [
         "# Is the surrogate/rule-engine gap at the target structural?",
@@ -242,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     lines += ["## Verdict", ""]
     lines += [
         "**First, a correction to the premise this was set up to test.** The Stage-1",
-        "report's held-out RMSE of ~0.057 is measured against the *noised* training",
+        f"report's held-out RMSE of {reported_rmse} is measured against the *noised* training",
         "label: `configs/pipeline.yaml` adds Gaussian noise with sigma 0.05 to every",
         "label on purpose, to stop the surrogate memorising the rule engine's exact",
         "boundaries. That noise is in the label, not in the model's estimate of the",
@@ -339,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     (RESULTS_DIR / "surrogate_boundary.json").write_text(json.dumps(payload, indent=2), "utf-8")
 
     print(f"\nresidual vs CLEAN rule score: RMSE {overall.rmse:.4f}, bias {overall.bias:+.4f}")
-    print("  (reported holdout RMSE ~0.057 is vs the NOISED label, sigma 0.05)")
+    print(f"  (reported holdout RMSE {reported_rmse} is vs the NOISED label, sigma 0.05)")
     print(f"near-boundary band: +/-{band:.4f} around {target:.2f}")
     print(
         f"  optimistic | short          : {optimistic_given_short * 100:.1f}% (n={int(short.sum())})"

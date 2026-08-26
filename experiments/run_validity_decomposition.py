@@ -35,6 +35,25 @@ from foodsense import RESULTS_DIR
 from foodsense.stage2_optimizer.baselines import METHODS
 from foodsense.stage2_optimizer.objective import ObjectiveConfig
 
+
+def _held_out_residual_rmse() -> float | None:
+    """The surrogate's held-out residual, read from the experiment that measured it.
+
+    Hardcoding it here would create a second copy of a number that only one
+    script is entitled to produce -- and the copy would not be regenerated when
+    the measurement is.
+    """
+    import json
+
+    path = RESULTS_DIR / "surrogate_boundary.json"
+    if not path.exists():
+        return None
+    try:
+        return float(json.loads(path.read_text(encoding="utf-8"))["residual_rmse_vs_clean_score"])
+    except (json.JSONDecodeError, KeyError, ValueError, OSError):
+        return None
+
+
 METHOD_LABELS = {
     "foodsense_de": "FoodSense-DE",
     "wachter_restricted": "Wachter (same space)",
@@ -112,6 +131,8 @@ HEADROOM_SPLIT = 0.179
 
 def render(data, target: float) -> str:
     import pandas as pd
+
+    residual = _held_out_residual_rmse() or 0.0
 
     stamp = datetime.now(UTC).isoformat(timespec="seconds")
     fs = data[data["method"] == "foodsense_de"]
@@ -247,7 +268,7 @@ def render(data, target: float) -> str:
                 f"| {gaps.max():.4f} |",
                 "",
                 "For scale: the surrogate's held-out residual RMSE against the clean",
-                "rule-engine score is 0.0306 (see",
+                f"rule-engine score is {residual:.4f} (see" if residual else "rule-engine score",
                 "[`surrogate_boundary.md`](surrogate_boundary.md)). Gaps at or below that are",
                 "the model behaving as measured; gaps well above it would be something else.",
                 "",
@@ -295,8 +316,8 @@ def render(data, target: float) -> str:
                 "the validity term is identically flat above the target, so a surrogate that",
                 "clears it strands the search with nothing to climb -- but it accounts for",
                 "little of the invalid population. The surrogate's held-out residual against",
-                "the clean rule score is 0.0306 RMSE, roughly half the reported figure (which",
-                "is measured against the deliberately noised label), and at that accuracy it",
+                f"the clean rule score is {residual:.4f} RMSE, roughly half the reported figure",
+                "(which is measured against the deliberately noised label), and at that rate it",
                 "usually enters the flat region on the correct side of the line.",
                 "",
                 "**So the validity number stands as an honest optimiser result.** It is not",
@@ -609,16 +630,18 @@ def main(argv: list[str] | None = None) -> int:
     fs = data[data["method"] == "foodsense_de"]
     invalid = fs[fs["valid"] == 0].copy()
     if not invalid.empty:
-        invalid["reason"] = invalid.apply(lambda r: classify(r, target), axis=1)
+        invalid["bucket"] = invalid.apply(lambda r: classify(r, target), axis=1)
+        invalid["surrogate_gap"] = invalid["surrogate_after"] - invalid["score_after"]
         invalid[
             [
                 "case",
                 "age_group",
                 "goal",
-                "reason",
+                "bucket",
                 "score_after",
                 "soft_score_after",
                 "surrogate_after",
+                "surrogate_gap",
                 "planned_sodium_mg",
                 "final_sodium_mg",
                 "hard_rule_ids",
@@ -626,8 +649,12 @@ def main(argv: list[str] | None = None) -> int:
         ].to_csv(RESULTS_DIR / "validity_decomposition_cases.csv", index=False)
 
         print(f"{len(invalid)} invalid FoodSense cases of {len(fs)}:")
-        for reason, count in invalid["reason"].value_counts().items():
-            print(f"  {count:>4}  {reason}")
+        for bucket in BUCKETS:
+            count = int((invalid["bucket"] == bucket).sum())
+            print(f"  {count:>4}  {bucket}")
+        gaps = invalid.loc[invalid["bucket"] == "C_calibration_gap", "surrogate_gap"]
+        if not gaps.empty:
+            print(f"  bucket C gap: mean {gaps.mean():.4f}, max {gaps.max():.4f}")
     print(f"\nwrote {RESULTS_DIR / 'validity_decomposition.md'} and .csv")
     return 0
 

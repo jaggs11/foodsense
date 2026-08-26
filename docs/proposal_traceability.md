@@ -41,7 +41,7 @@ food in the database can trigger fails rather than looking enforced.
 
 | Claim | Where | Evidence |
 |-------|-------|----------|
-| The surrogate learns the guidelines, not the corpus | `stage1_prediction/train.py` | Nutrition5k (a different corpus) RMSE 0.0573 vs Food.com held-out 0.0571 |
+| The surrogate learns the guidelines, not the corpus | `stage1_prediction/train.py` | Nutrition5k (a different corpus) RMSE 0.0577 vs Food.com held-out 0.0576 |
 | Validity is judged by rules, never the surrogate | `constraints/engine.py::RuleEngine.is_valid` | `test_constraints.py::TestRuleEngine::test_is_valid_requires_both_safety_and_the_target` |
 | Hard safety is excluded from the label by design | `stage1_prediction/labels.py` | `test_stage1.py::TestDataset::test_labels_ignore_hard_safety` |
 | The surrogate tracks the rule engine closely enough to climb | `stage1_prediction/predict.py` | `test_stage1.py::TestSuitabilityModel::test_the_surrogate_tracks_the_rule_engine` |

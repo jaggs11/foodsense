@@ -17,11 +17,15 @@ which pairs a postprandial-glucose predictor with a counterfactual optimiser and
 translation layer, along five axes: availability-awareness, modification-based editing,
 post-generation verification, generalised health goals, and age/life-stage personalisation.
 
-> **Status:** Phases 0–4 complete — **all four stages run end to end, offline, with no
-> API key.** `make demo` walks the three scenarios from the proposal. The web UI and
-> Docker packaging land in phases 5–6; see [Roadmap](#roadmap). No evaluation number
-> appears in this repository until the script that produces it has actually been run —
-> see `results/`.
+> **Status:** complete and demo-ready. **All four stages run end to end, offline, with
+> no API key**; `make demo` walks the three scenarios from the proposal and `make serve`
+> opens the web UI on localhost. Every result in `results/` was regenerated from the
+> shipped code and checked against a hash manifest. No evaluation number appears in this
+> repository until the script that produces it has actually been run.
+>
+> Two things are **not** verified and are labelled as such wherever they appear: the
+> Docker build (see below) and the LLM providers (no API key in the development
+> environment — the offline template path is the one that is exercised).
 
 ---
 
@@ -170,11 +174,18 @@ Or drive the CLI directly, which is what `serve` does underneath:
 ```
 </details>
 
-Docker:
+Docker — **present but unverified**:
 
 ```bash
-docker compose up --build     # -> http://localhost:8000
+docker compose up --build     # -> http://127.0.0.1:8000
 ```
+
+> The `Dockerfile` and `docker-compose.yml` are written and committed, but **Docker is
+> not installed on the development machine, so this build has never been executed**.
+> Treat it as untested: it may well need adjusting. Verifying it is a CI task, and it
+> is the one item on the roadmap that is written down rather than demonstrated. The
+> demo path does not involve Docker — use `make serve`, which is the path that is
+> tested.
 
 ---
 
@@ -220,6 +231,16 @@ left a hard-safety rule broken. Neither number is a weight that happened to work
 an unavailable food has no decision variable, so no point in the search space can
 contain one, and no setting in `configs/pipeline.yaml` can change that. It also
 moves the fewest grams of any method that edits at all (norm-L1 0.796).
+
+**One of these baseline numbers improved because we fixed our own harness.**
+DiCE-random was not reproducible: `generate_counterfactuals` was being called
+without a seed, and DiCE's random sampler draws from the global RNG, so every run
+was a fresh draw. Seeding it moved the row **in the baseline's favour** — validity
+40% → 44% on the unseeded re-draw, settling at 41% once deterministic — and it is
+reported that way because a competitor's number going up is exactly the kind of
+correction that is tempting to leave unmade. The other five methods, FoodSense-DE
+included, reproduced **bit-identically** across the regeneration, which is the
+evidence that the pipeline is not quietly tuned toward its own result.
 
 **Its validity is 29%, and that is lower than most of the baselines.** Greedy
 reaches 52%, DiCE-random 41%. This is the number to argue with, so it is stated
