@@ -1,28 +1,26 @@
-# results/ artefact manifest, taken at tag phase-4.5
-# commit: af95103be2572b6bbe504b897972162460f23a68
+# results/ artefact manifest
+# commit: 39220e65350bd931cb7f0da3afb9de03f919ab26
 #
 # Every evaluated number this project reports lives in one of these files.
-# Phase 6 regenerates them and diffs against this manifest, so a silent
-# clobber becomes a visible one. Regenerate the manifest ONLY when a change
-# has been classified and accepted.
+# `make eval` regenerates them; `make verify-results` diffs against this
+# manifest so a silent clobber becomes a visible one. Regenerate this file
+# ONLY when a change has been classified and deliberately accepted.
 #
-# Verify:  python -c "import hashlib,pathlib;[print('OK' if hashlib.sha256(pathlib.Path(l.split('  ',1)[1].strip()).read_bytes()).hexdigest()==l.split('  ',1)[0] else 'CHANGED '+l.split('  ',1)[1].strip()) for l in open('results/MANIFEST.sha256') if not l.startswith('#') and l.strip()]"
-#
-3afc7667f6ad6691d8221ac65533ce682ff8539de6823ba13ca2651b21d2bd2d  results/cf_comparison.csv
-42bc6cfea2aaac67ca84dc14f7f9206d892fe844e5f242c5c22991df8ac3707c  results/cf_comparison.md
-8fdbfa0d5fd973009d6712f54db560ef14e7a29ddda5efd991c38313ee7489d1  results/cf_comparison_notes.json
-dde8117358d3a7650eb0fd4d7b1169270db9452e4b45f8eb028642b8f5c75daa  results/cf_comparison_raw.csv
+8c66358afb162c7a9b287b4a8782c97726f9726baf542c8e83659d43dcc7ad7e  results/cf_comparison.csv
+91c3ecbb8a98a1b3581388ee7b19fa8aa613045ccda72f3e21fb8dbca67021fc  results/cf_comparison.md
+43292e7df779441ef198e111b9edd4543c0ab60cc265b4e2de8ccd82b6b896ee  results/cf_comparison_notes.json
+1885808a2ceb7ccbe41f858e40010a7537dacd521cd57972222ef8408e8572d2  results/cf_comparison_raw.csv
 9efa31d158759ca046b37c22c40a329a9454b514aef79077202a8c84711162c8  results/dataset_comparison.csv
-51c62b825c79617083e60cbc44af748d8d87bfc3dc88f7b533804e5da8f0aba0  results/dataset_comparison.md
-ddbbfa50b430109900235534f5cfda59924d09c29cba959e8b95cd9bdf6e3721  results/figures/cf_comparison.png
+acbf5d4617eda7bd6252456c7da3a54a66e18ceb7b5ec5f4906bb8b2cb180ea9  results/dataset_comparison.md
+b100ba6c8fe9d320aacee4ebb52176b738fb2a48bc905259f25594c645a8cce0  results/figures/cf_comparison.png
 ddff55f719d0b2bfcd24a86f65cd2b5bad79405a538d0a02a055a455a9573f7d  results/figures/lambda_sweep.png
-45e10a4fca4a2eaa561c462ba895b675d53818060a076360686f38df02d35c91  results/lambda_sweep.csv
-42de705093931dcad197ec706de09d9d2ec582b3cdd6e198f308ac70ac7778bf  results/lambda_sweep.md
+8b95a2f761517dd344837b91d24c6e312180b2bf1295fd2ddb45e9a9bb51fac3  results/lambda_sweep.csv
+ec59044398de8d32dc75bd9e457ab8a37e8155fb0d86ae939937d5d92da70693  results/lambda_sweep.md
 38a1b249d635519cc7f623f50013d02c51a4c13b13630550c168a98c9b823ffe  results/README.md
 891052e1691b8042946d5333259cdea6e1ac1f3dfcaaffebeb53e9789777c60e  results/surrogate_boundary.json
-f6b7ac951fd7ab50f9988ff8a77df67fad29795c25f26ec949282892b4aff9c9  results/surrogate_boundary.md
-2ba5ef8ee137bc84827440cc8c913b35746f2d392b147a5e24c19ce6d5e7e2b8  results/validity_decomposition.csv
-7475e60f96477f10059d3745e0fa0df37f19ff42dc400df15643b6cef6349f45  results/validity_decomposition.md
+02e006d68899eac52bb7cb160c2e1010c9e64d229a3a8935bf3f888f6d985515  results/surrogate_boundary.md
+0bd5f91d0e2da559ad0c38174d52acff5c51cc3c7c90432b931a9f723a8d37be  results/validity_decomposition.csv
+4452b3c86afb863ad3a31f06d36ec250873619ffb5fe4595693df665433bf5bb  results/validity_decomposition.md
 f69bee1026c78b2f546b580fe89e1fb4694377174751cb2826b9752dd870522b  results/validity_decomposition_cases.csv
-c47f9ef642942096511d33cb48ed5f2453f8782204bedc1bce75e8edc8ccb9eb  results/verification_eval.json
-a9d79f87f0882722a38bce8ba1c356a781c5a940eda5e7186a89ae12985ee964  results/verification_eval.md
+75bc6b4f09ac0f29e47ac562133fc557efe50adcc3f2141b13d5f8b642246b84  results/verification_eval.json
+5869596e3358681581f1abc1f0db6e070c1e461d80c4e7ecb5af0e70842eb18c  results/verification_eval.md

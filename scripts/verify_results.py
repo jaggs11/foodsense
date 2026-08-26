@@ -51,12 +51,40 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+#: JSON keys holding wall-clock measurements. Handled structurally rather than
+#: by regex: `runtimes` is a list of per-case timings spread over many lines, and
+#: a line-based filter would only catch the first of them.
+VOLATILE_JSON_KEYS = {"runtime_s", "runtimes", "runtime_mean_s", "total_runtime_s"}
+
+
+def _strip_volatile_json(node):
+    if isinstance(node, dict):
+        return {k: _strip_volatile_json(v) for k, v in node.items() if k not in VOLATILE_JSON_KEYS}
+    if isinstance(node, list):
+        return [_strip_volatile_json(v) for v in node]
+    return node
+
+
 def _canonical(path: Path) -> str | None:
     """The file's content with volatile parts removed, or None if unreadable."""
     try:
         text = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
         return None  # binary (a figure): only the byte digest is meaningful
+
+    # Line endings are not content. The baseline comes out of git as LF while the
+    # working tree on Windows is CRLF, and without this every single line of
+    # every text artefact reads as changed -- which is exactly the false alarm
+    # this script exists to prevent.
+    text = text.replace(chr(13) + chr(10), chr(10)).replace(chr(13), chr(10))
+
+    if path.suffix == ".json":
+        import json
+
+        try:
+            return json.dumps(_strip_volatile_json(json.loads(text)), sort_keys=True, indent=0)
+        except json.JSONDecodeError:
+            pass  # fall through to the line-based path
 
     if path.suffix == ".csv":
         lines = text.splitlines()
@@ -167,7 +195,11 @@ def main(argv: list[str] | None = None) -> int:
             except (subprocess.CalledProcessError, OSError):
                 unexpected.append(f"{name}: CHANGED (no baseline copy to compare against)")
                 continue
-            old = ROOT / ".verify_tmp"
+            # Same suffix as the file under test. _canonical dispatches on it,
+            # so a temp file without one would be canonicalised by the generic
+            # line filter and compared against a CSV canonicalised by column --
+            # guaranteeing a spurious mismatch on every structured artefact.
+            old = ROOT / f".verify_tmp{path.suffix}"
             old.write_bytes(blob)
             same = _canonical(old) == _canonical(path)
             old.unlink()

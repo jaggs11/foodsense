@@ -471,6 +471,14 @@ def _run_dice(
                     "initialization": "random",
                     "posthoc_sparsity_param": None,
                 }
+            if method == "dice_random":
+                # DiCE's random sampler draws from the *global* RNG, which our
+                # own default_rng(seed) does not touch. Without this the row is
+                # not reproducible: two runs of identical code on identical cases
+                # gave 40% and 44% validity. The genetic sampler has no equivalent
+                # parameter -- see the note on its budget behaviour below, which is
+                # why that matters less there than it would elsewhere.
+                extra["random_seed"] = seed
             generated = explainer.generate_counterfactuals(
                 query,
                 total_CFs=4,

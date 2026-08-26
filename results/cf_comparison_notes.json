@@ -1,9 +1,6 @@
 {
-  "dice_genetic": {
-    "evaluation_budget_exhausted": 300
-  },
   "dice_random": {
-    "evaluation_budget_exhausted": 112
+    "evaluation_budget_exhausted": 125
   },
   "wachter": {
     "plateaued_without_validity": 184,
@@ -19,5 +16,8 @@
     "evaluation_budget": 7,
     "plateaued_without_validity": 207,
     "valid_and_plateaued": 86
+  },
+  "dice_genetic": {
+    "evaluation_budget_exhausted": 300
   }
 }
