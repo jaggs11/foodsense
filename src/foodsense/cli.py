@@ -326,5 +326,54 @@ def trace(
         console.print(f"[green]wrote {output}[/green]")
 
 
+@app.command()
+def serve(
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help=(
+            "Interface to bind. The default is loopback, and that is the whole "
+            "security boundary: there is no auth because there is nothing to "
+            "authenticate against. Change it only on a network you trust."
+        ),
+    ),
+    port: int = typer.Option(8000, "--port", "-p", min=1, max=65535),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open the demo page."),
+) -> None:
+    """Serve the API and the built UI from one process on one origin.
+
+    Single origin is the point: the frontend is static assets served by this same
+    app, so there is no proxy, no CORS, and nothing that needs the network. Turn
+    the Wi-Fi off and it still works.
+    """
+    import uvicorn
+    from api.main import FRONTEND_DIST
+
+    url = f"http://{host}:{port}"
+    if (FRONTEND_DIST / "index.html").exists():
+        console.print(f"[green]FoodSense[/green] -> {url}")
+    else:
+        # Not fatal. The API is perfectly usable on its own, and saying so beats
+        # serving a 404 at / with no explanation.
+        console.print(
+            f"[yellow]The frontend has not been built, so {url}/ will not serve a page.[/yellow]"
+            + chr(10)
+            + "Build it with:  cd frontend && npm install && npm run build"
+            + chr(10)
+            + f"The API itself is live at {url}/api/health"
+        )
+    console.print("[dim]Ctrl-C to stop. Everything runs locally; no key, no network.[/dim]")
+
+    if open_browser and (FRONTEND_DIST / "index.html").exists():
+        import threading
+        import webbrowser
+
+        # Fired on a timer rather than before the server starts, so the page is
+        # not opened against a port that is not listening yet.
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+
+    uvicorn.run("api.main:app", host=host, port=port, log_level="info")
+
+
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(app())

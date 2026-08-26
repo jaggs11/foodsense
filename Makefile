@@ -70,12 +70,13 @@ eval:
 frontend:
 	cd frontend && npm install && npm run build
 
+# Loopback, not 0.0.0.0. Binding every interface is the difference between a
+# demo on your laptop and an unauthenticated service on the venue's wifi.
 api:
-	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+	$(PY) -m foodsense.cli serve --no-open
 
 serve: frontend
-	@echo "Serving FoodSense on http://localhost:8000"
-	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+	$(PY) -m foodsense.cli serve
 
 lint:
 	$(BIN)/ruff check .

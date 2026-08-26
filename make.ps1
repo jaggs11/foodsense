@@ -75,13 +75,13 @@ FoodSense targets (./make.ps1 <target>):
         Push-Location frontend
         try { npm install; npm run build } finally { Pop-Location }
     }
-    'api' { Require-Venv; & $Py -m uvicorn api.main:app --host 0.0.0.0 --port 8000 }
+    'api' { Require-Venv; & $Py -m foodsense.cli serve --no-open }
     'serve' {
         Require-Venv
         Push-Location frontend
         try { npm install; npm run build } finally { Pop-Location }
         Write-Output 'Serving FoodSense on http://localhost:8000'
-        & $Py -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+        & $Py -m foodsense.cli serve
     }
     'lint' { Require-Venv; & $Ruff check . }
     'format' { Require-Venv; & $Ruff format .; & $Ruff check --fix . }
