@@ -19,6 +19,12 @@ Five steps, in order:
    here is a hazard the earlier stages missed, which is exactly what this is for.
 5. **Repair.** A surviving hard violation is fixed by moving to the nearest safe
    form, or by removing the item when no safe form exists. Repairs are logged.
+   Re-forming answers a rule about *preparation*; it cannot answer a rule about
+   the food itself, and one item can break both at once. A second pass therefore
+   removes whatever is still unsafe, and supersedes the first pass's log entry for
+   that item so the log describes the plate that is actually returned. Two passes
+   and no more: beyond that the meal is genuinely unfixable, and ``final_pass``
+   says so rather than looping.
 
 The counts in :class:`VerificationReport` are the project's headline metric, so
 the report distinguishes *what was wrong* from *what was fixed*: a run that

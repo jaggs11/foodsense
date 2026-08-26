@@ -127,16 +127,30 @@ FAULT_SPECS = (
         ),
     ),
     Fault(
+        key="quantity_drift_marginal",
+        kind="rederivation",
+        injected="One item's quantity multiplied by 1.10-1.15x",
+        why="The floor of the measurement: a drift at or just past the tolerance itself",
+        because=(
+            "Reported separately because much of this band cannot be caught and it "
+            "would otherwise drag the honest number down. The tolerance is 10% of "
+            "the *meal total*; a 10-15% drift on one item moves the total by that "
+            "fraction times the item's share of the plate, which is below 10% for "
+            "every item that is not almost the whole meal. Detections here are the "
+            "cases where the drifted item dominated the plate."
+        ),
+    ),
+    Fault(
         key="quantity_drift_near",
         kind="rederivation",
-        injected="One item's quantity multiplied by 1.1-1.3x -- just past the tolerance",
+        injected="One item's quantity multiplied by 1.15-1.3x",
         why="The realistic version: a small restatement, not an obvious one",
         because=(
             "Claimed nutrients are computed *before* the drift, so catching it "
-            "requires recomputing the meal from the database and comparing. A small "
-            "drift on a small item moves the meal total by less than the tolerance "
-            "and is genuinely missed -- which is what makes this band the one that "
-            "reports where detection begins rather than confirming the easy regime."
+            "requires recomputing the meal from the database and comparing. This is "
+            "the band where detection genuinely turns over: large enough that a "
+            "drifted item of ordinary size can push the meal total past the "
+            "tolerance, small enough that it often does not."
         ),
     ),
     Fault(
@@ -169,7 +183,11 @@ FAULT_BY_KEY = {f.key: f for f in FAULT_SPECS}
 
 #: Multipliers for the two drift bands, so the near band's boundary is stated in
 #: one place rather than buried in the injector.
-DRIFT_BANDS = {"quantity_drift_near": (1.1, 1.3), "quantity_drift_far": (1.6, 3.0)}
+DRIFT_BANDS = {
+    "quantity_drift_marginal": (1.10, 1.15),
+    "quantity_drift_near": (1.15, 1.30),
+    "quantity_drift_far": (1.60, 3.00),
+}
 
 
 @dataclass(slots=True)
@@ -203,6 +221,15 @@ class FaultOutcome:
     detected: int = 0
     repaired: int = 0
     reached_user: int = 0
+    #: Mean relative shift the fault caused in the meal's *total* energy. Recorded
+    #: because that -- not the per-item multiplier -- is the quantity the 10%
+    #: tolerance is applied to, and it is the reason a visible per-item drift can
+    #: be invisible at the meal level.
+    total_shifts: list[float] = field(default_factory=list)
+
+    @property
+    def mean_total_shift(self) -> float:
+        return statistics.fmean(self.total_shifts) if self.total_shifts else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +406,11 @@ def study_faults(db: FoodDB, engine: RuleEngine, n: int) -> list[FaultOutcome]:
 
             outcome = outcomes[fault]
             outcome.n += 1
+            if fault in DRIFT_BANDS:
+                clean_energy = clean_nutrients.as_dict()["energy_kcal"]
+                drifted_energy = db.nutrients_for(corrupted).as_dict()["energy_kcal"]
+                if clean_energy > 0:
+                    outcome.total_shifts.append(abs(drifted_energy - clean_energy) / clean_energy)
             detected = bool(report.corrected or report.safety_fixes or report.unmatched)
             outcome.detected += int(detected)
             outcome.repaired += int(report.final_pass and detected)
@@ -513,24 +545,45 @@ def render(
             f"| **{_pct(r_reached, r_n)}** |"
         )
 
+    marginal = next((o for o in faults if o.fault == "quantity_drift_marginal"), None)
     near = next((o for o in faults if o.fault == "quantity_drift_near"), None)
     far = next((o for o in faults if o.fault == "quantity_drift_far"), None)
     hazard = next((o for o in faults if o.fault == "reintroduced_hazard"), None)
 
     lines += ["", "### Where quantity detection begins", ""]
-    if near and far and near.n and far.n:
+    bands = [b for b in (marginal, near, far) if b is not None and b.n]
+    if bands:
         lines += [
-            "The two drift bands are the same mechanism at two magnitudes. At 1.6-3.0x",
-            f"detection is {_pct(far.detected, far.n)}; at 1.1-1.3x it is",
-            f"{_pct(near.detected, near.n)}.",
+            "The drift bands are one mechanism at three magnitudes. Splitting them is not",
+            "presentational: the tolerance is 10% of the **meal total**, while the fault is",
+            "a multiplier on **one item**, so the quantity that actually decides detection",
+            "is the multiplier scaled by that item's share of the plate. A 1.1x drift on a",
+            "garnish is a fraction of a percent at the meal level and cannot be caught by a",
+            "10% bound at all. Reporting 1.1-1.3x as one number therefore mixes a regime",
+            "that is undetectable by construction into one that is genuinely being measured.",
             "",
-            "The near band is reported precisely because it is the harder one, and its",
-            "misses are structural rather than accidental. The tolerance is applied to the",
-            "**meal total**, so drifting one item by 10-30% moves the total by rather less",
-            "than that whenever the item is a small share of the plate -- and a sub-tolerance",
-            "discrepancy is, by definition, one this layer has decided not to flag. Raising",
-            "detection here means tightening `nutrient_tolerance` or checking per item, both",
-            "of which trade against false positives on legitimate rounding.",
+            "| Band | Per-item multiplier | Mean shift in meal total | Cases | Detected |",
+            "|---|---|---|---|---|",
+        ]
+        for band in bands:
+            low, high = DRIFT_BANDS[band.fault]
+            lines.append(
+                f"| `{band.fault.rsplit('_', 1)[-1]}` | {low:.2f}-{high:.2f}x "
+                f"| {band.mean_total_shift * 100:.1f}% | {band.n} "
+                f"| {_pct(band.detected, band.n)} |"
+            )
+        lines += [
+            "",
+            "The **mean shift in meal total** column is the one to read against the 10%",
+            "tolerance. Where it sits below 10%, a miss is the tolerance doing its job, not",
+            "the verifier failing: a sub-tolerance discrepancy is by definition one this",
+            "layer has decided not to flag, because flagging it would mean flagging",
+            "legitimate rounding too.",
+            "",
+            "Raising detection in the low bands means tightening `nutrient_tolerance` or",
+            "moving the check per item rather than per meal. Both trade directly against",
+            "false positives, and neither is obviously worth it for a discrepancy smaller",
+            "than the error in the food match itself.",
             "",
         ]
     else:
