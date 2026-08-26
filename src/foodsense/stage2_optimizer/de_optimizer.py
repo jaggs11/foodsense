@@ -93,6 +93,32 @@ def _quantise(population: np.ndarray, integrality: np.ndarray) -> np.ndarray:
     return out
 
 
+def _polish_forms(
+    objective: CounterfactualObjective, space: SearchSpace, x: np.ndarray
+) -> np.ndarray:
+    """Exhaustively pick the best preparation form for each item, quantities fixed.
+
+    Differential evolution is weak on categorical dimensions: a form index only
+    changes when a continuous value happens to cross an integer boundary, so a
+    strictly better form can sit one step away and never be tried. Measured on the
+    toddler scenario, the search returned *pureed* grapes when *quartered* scored
+    0.035 better -- safe either way, but not the repair the AAP's map calls for.
+
+    The form space is tiny (a handful of options per item), so after the search
+    converges every form is simply tried. That makes the choice deterministic
+    rather than a matter of whether the population happened to explore it.
+    """
+    polished = x.copy()
+    for i, variable in enumerate(space.variables):
+        n_forms = len(variable.forms)
+        if n_forms < 2 or polished[2 * i] < objective.config.min_serving_g:
+            continue
+        candidates = np.repeat(polished[None, :], n_forms, axis=0)
+        candidates[:, 2 * i + 1] = np.arange(n_forms, dtype=np.float64)
+        polished = candidates[int(np.argmin(objective.values(candidates)))]
+    return polished
+
+
 def differential_evolution(
     objective: CounterfactualObjective,
     space: SearchSpace,
@@ -197,6 +223,7 @@ def differential_evolution(
             reason = "plateaued_without_validity"
             break
 
+    best_x = _polish_forms(objective, space, best_x)
     best_meal = space.decode(best_x, objective.config.min_serving_g)
     best_terms = objective.terms(best_x)
     return OptimizationResult(

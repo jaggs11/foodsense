@@ -166,14 +166,38 @@ def satisfaction(value: float, threshold: Threshold, softness: float) -> float:
             (threshold.maximum - value) / width
         )
 
+    # One-sided thresholds are softened on a *ratio* scale rather than a linear
+    # one: the argument is log(threshold / value) instead of (threshold - value).
+    #
+    # Both give exactly 0.5 at the threshold and behave almost identically near
+    # it, but they differ completely once a rule is badly broken, and that is
+    # where it matters. On the linear scale a 500 mg sodium ceiling scores
+    # 5.2e-06 at 1413 mg and 3.1e-07 at 1623 mg -- numerically dead, so the
+    # optimiser gets no signal that the second meal is worse than the first, and
+    # the smooth surface this whole design rests on is flat exactly where it is
+    # most needed. On the ratio scale those become 9.8e-04 and 3.9e-04: still
+    # firmly rejected, but still ordered.
     score = 1.0
     if threshold.minimum is not None:
-        width = max(abs(threshold.minimum) * softness, _MIN_WIDTH)
-        score *= _sigmoid((value - threshold.minimum) / width)
+        score *= _one_sided(value, threshold.minimum, softness, is_floor=True)
     if threshold.maximum is not None:
-        width = max(abs(threshold.maximum) * softness, _MIN_WIDTH)
-        score *= _sigmoid((threshold.maximum - value) / width)
+        score *= _one_sided(value, threshold.maximum, softness, is_floor=False)
     return score
+
+
+def _one_sided(value: float, threshold: float, softness: float, *, is_floor: bool) -> float:
+    """Satisfaction of a single bound, softened on a ratio scale."""
+    if threshold <= 0:
+        # A zero-or-negative bound has no meaningful ratio; fall back to the
+        # linear form, which is well defined there.
+        width = max(abs(threshold) * softness, _MIN_WIDTH)
+        delta = (value - threshold) if is_floor else (threshold - value)
+        return _sigmoid(delta / width)
+    if value <= 0:
+        # Nothing at all: fully satisfies a ceiling, fully fails a floor.
+        return 0.0 if is_floor else 1.0
+    ratio = value / threshold if is_floor else threshold / value
+    return _sigmoid(math.log(ratio) / max(softness, _MIN_WIDTH))
 
 
 # ---------------------------------------------------------------------------

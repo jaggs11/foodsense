@@ -77,7 +77,16 @@ rules:
 
   hypertension:
     label: "Hypertension (tightened sodium ceiling)"
-    severity: soft
+    # HARD, reversing an earlier judgement that this was a preference. Measured
+    # evidence changed the call: as a soft rule it is one weighted term among
+    # roughly seventeen, so on the elderly demo case the optimiser could raise
+    # the overall score by adding protein and micronutrients while leaving a
+    # 1,413 mg sodium meal untouched -- and in fact pushed it to 1,623 mg,
+    # because a rule that far past its ceiling contributes no gradient. A
+    # clinician-set ceiling for a diagnosed condition is not something a better
+    # vitamin B12 figure should be able to buy out. Marked hard, no combination
+    # of other gains can trade it away.
+    severity: hard
     per_meal_max:
       # AHA ideal of 1500 mg/d over roughly three meals.
       sodium_mg: 500

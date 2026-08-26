@@ -8,10 +8,14 @@ be "claimed" without a file and a test behind it.
 |---|----------------|---------------|------|
 | 1 | Availability-aware CF search space | `stage2_optimizer/space.py` | `test_stage2.py::TestSearchSpace::test_no_reachable_point_contains_an_unavailable_food` (property over 300 random points), `test_variables_are_exactly_planned_union_pantry`; measured 0% violation in `results/cf_comparison.md` |
 | 2 | Modification-based minimal editing | `stage2_optimizer/objective.py` | `test_stage2.py::TestObjective` (planned meal has zero distance/sparsity; safety cannot be traded away), `TestDifferentialEvolution::test_the_edit_is_minimal` |
-| 3 | Post-generation verification layer | `stage4_verification/verifier.py` | _(Phase 4)_ |
+| 3 | Post-generation verification layer | `stage4_verification/verifier.py` | `test_stage4.py::TestVerificationCatchesHallucinations`, `::TestVerificationCatchesSafety`; measured 100% detection on 4 of 5 injected fault classes in `results/verification_eval.md` |
 | 4 | Generalised health goals | `constraints/goals.py`, `configs/goals/` | `test_constraints.py::TestConfigs::test_every_goal_has_a_config_with_rules`, `TestRuleEngine::test_the_same_meal_scores_differently_for_different_profiles` |
 | 5 | Age / life-stage personalisation | `constraints/age_rules.py`, `configs/age_groups/` | `test_constraints.py::TestChokingHazards` (one case per banned pair), `TestMedicationInteractions`, `TestTexture` |
-| -- | Four-stage MetaPlate pipeline preserved | `pipeline.py` | _(Phase 4)_ |
+| -- | Four-stage MetaPlate pipeline preserved | `pipeline.py` | `test_worked_examples.py::TestEveryScenario::test_the_pipeline_completes_all_four_stages` |
+| -- | Offline-first: no key, no network | `stage3_rag/providers.py` | `test_worked_examples.py::...::test_the_offline_path_needs_no_provider`, `test_stage4.py::TestProviderContract::test_an_unavailable_provider_falls_back_rather_than_failing` |
+| -- | Scenario 1 worked example | `scenarios.py` | `test_worked_examples.py::TestToddlerChoking` (grapes quartered, peanuts removed, suitability improves) |
+| -- | Scenario 2 worked example | `scenarios.py` | `test_worked_examples.py::TestElderlySodium` (final sodium <= 500 mg, <= 4 edits, verified) |
+| -- | Scenario 3 worked example | `scenarios.py` | `test_worked_examples.py::TestAdultWeight` (goal thresholds met with no safety rule involved) |
 | -- | Nearest-safe-form repair, not removal | `stage2_optimizer/space.py` form costs | `test_stage2.py::TestDifferentialEvolution::test_it_repairs_grapes_by_quartering_rather_than_removing`, `test_it_removes_the_peanuts` |
 | -- | Two-corpus comparative analysis | `data/corpora.py`, `experiments/run_dataset_comparison.py` | `test_data.py::TestCorpora`, Stage-1 metrics on both corpora in `models/stage1_metrics.json` |
 

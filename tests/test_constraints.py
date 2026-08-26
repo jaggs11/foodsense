@@ -94,7 +94,10 @@ class TestSatisfaction:
         threshold = Threshold(maximum=500.0)
         scores = [satisfaction(v, threshold, 0.15) for v in (200, 400, 500, 600, 900)]
         assert scores == sorted(scores, reverse=True)
-        assert scores[0] > 0.95 and scores[-1] < 0.01
+        # Ratio softening decays more slowly than the linear form it replaced --
+        # deliberately, so a breached rule keeps a usable gradient. 900 mg against
+        # a 500 mg ceiling scores 0.019: decisively rejected, not numerically dead.
+        assert scores[0] > 0.95 and scores[-1] < 0.05
 
     def test_floor_is_monotonically_increasing(self):
         threshold = Threshold(minimum=25.0)
@@ -127,6 +130,29 @@ class TestSatisfaction:
     def test_extreme_values_saturate_without_overflow(self):
         assert satisfaction(1e12, Threshold(maximum=1.0), 0.15) == 0.0
         assert satisfaction(-1e12, Threshold(minimum=1.0), 0.15) == 0.0
+
+    def test_a_badly_broken_rule_still_has_a_gradient(self):
+        """Regression: softening on a linear scale went numerically dead.
+
+        A 500 mg ceiling scored 5.2e-06 at 1413 mg and 3.1e-07 at 1623 mg, so the
+        optimiser could not tell the worse meal from the bad one -- the smooth
+        surface this design depends on was flat exactly where it mattered.
+        """
+        threshold = Threshold(maximum=500.0)
+        bad = satisfaction(1413.0, threshold, 0.15)
+        worse = satisfaction(1623.0, threshold, 0.15)
+        assert bad > worse > 0.0
+        assert bad > 1e-4, "a breached rule must still carry usable signal"
+        assert worse / bad < 0.9, "and must still be ordered"
+
+    def test_ratio_softening_keeps_the_boundary_at_a_half(self):
+        for bound in (Threshold(maximum=500.0), Threshold(minimum=25.0)):
+            value = bound.maximum if bound.maximum is not None else bound.minimum
+            assert satisfaction(value, bound, 0.15) == pytest.approx(0.5)
+
+    def test_zero_satisfies_a_ceiling_and_fails_a_floor(self):
+        assert satisfaction(0.0, Threshold(maximum=500.0), 0.15) == 1.0
+        assert satisfaction(0.0, Threshold(minimum=25.0), 0.15) == 0.0
 
     def test_is_satisfied_uses_the_hard_boundary(self):
         """Validity is decided by the threshold, never by the softened score."""
@@ -363,16 +389,28 @@ class TestMedicationInteractions:
         assert not engine.evaluate(meal, _older_adult(health_flags=[HealthFlag.STATIN])).is_safe
         assert engine.evaluate(meal, _older_adult()).is_safe
 
-    def test_hypertension_is_soft_not_a_safety_hazard(self, engine, db):
-        """High sodium is a goal failure, not an immediate danger; the severity says so."""
+    def test_hypertension_sodium_ceiling_is_hard(self, engine, db):
+        """A clinician-set ceiling must not be tradeable against other gains.
+
+        This reverses an earlier judgement. As a soft rule the ceiling was one
+        weighted term among roughly seventeen, and on the elderly demo case the
+        optimiser raised the overall score by adding protein while pushing sodium
+        from 1,413 mg to 1,623 mg.
+        """
         salty = max(db.records, key=lambda r: r.nutrients_per_100g.sodium_mg)
         meal = Meal(items=[salty.as_item(80.0), _staple(db)])
         evaluation = engine.evaluate(meal, _older_adult(health_flags=[HealthFlag.HYPERTENSION]))
         violation = next(
             v for v in evaluation.violations if v.rule_id == "flag.hypertension.sodium_mg"
         )
-        assert violation.severity == "soft"
-        assert evaluation.is_safe
+        assert violation.severity == "hard"
+        assert not evaluation.is_safe
+
+    def test_the_same_meal_is_fine_without_the_flag(self, engine, db):
+        """The ceiling belongs to the condition, not to the food."""
+        salty = max(db.records, key=lambda r: r.nutrients_per_100g.sodium_mg)
+        meal = Meal(items=[salty.as_item(80.0), _staple(db)])
+        assert engine.evaluate(meal, _older_adult()).is_safe
 
 
 class TestTexture:

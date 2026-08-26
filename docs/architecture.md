@@ -195,11 +195,75 @@ why the early-stopping condition is "valid by the rules *and* plateaued" rather 
 
 ## 5. Retrieval and generation contract
 
-_(Phase 4)_
+Stage 3 turns the optimiser's decision into language. It does not make decisions --
+the diff between the planned and optimised meals is computed in `translate.py` and
+handed to the provider as a fact, along with the rule-engine message that caused each
+edit. A generative step describing a decision is a much smaller trust surface than one
+making it.
+
+**The default provider is the offline one.** `TemplateProvider` is deterministic,
+needs no key and no network, and is what `make demo` uses. That ordering is the
+project's central robustness claim: the LLM is an enhancement layer, never a
+dependency. It is also the fallback for every other provider, so its output quality
+sets the floor for the whole system.
+
+Every provider answers the same contract:
+
+```json
+{"items": [{"name", "food_id", "quantity_g", "form"}], "text", "rationale"}
+```
+
+The LLM providers send the BM25-retrieved USDA candidates so the model picks real
+foods rather than inventing them, demand strict JSON, validate the reply, retry once,
+and fall back to the template. Parsing is strict about *structure* and forgiving about
+*packaging*: a markdown fence or a preface is cosmetic and should not waste the retry,
+while a missing field or an unknown form is a real breach Stage 4 should never see.
+
+Retrieval (BM25 over names, categories and tags) and Stage-4 matching are deliberately
+different algorithms. BM25 answers "which foods are plausibly related to this phrase";
+the matcher in `data/fdc.py` answers "is this specific name the same food as one we
+hold". Using one for both would make verification partly circular -- grading the
+retriever against the retriever's own notion of similarity.
 
 ## 6. Verification loop
 
-_(Phase 4)_
+Extension #3, and the premise is that **nothing a generator says is trusted**. Whatever
+Stage 3 produces is re-checked from scratch:
+
+1. **Match** each item's name to a real food; below the threshold it is recorded as
+   `unmatched` and replaced by the retriever's best real candidate -- not silently
+   dropped, not silently kept.
+2. **Recompute** nutrients from the database row times the quantity. The generator's
+   own figures are never used, only compared against.
+3. **Compare** claims at ±10% and correct to the database value, recording both.
+4. **Re-scan** with the same `RuleEngine` that produced the Stage-1 labels and judged
+   Stage-2 validity.
+5. **Repair** a survivor by moving to the nearest safe form, or removing it when no
+   safe form exists.
+
+Step 4 is the one that matters. A generative rewrite can undo a safety decision the
+optimiser made, and re-running the rules on the final list is what stops that being
+the last word.
+
+### Measured
+
+`experiments/run_verification_eval.py` runs two studies, because either alone would
+mislead. The observed-rate study finds near-zero errors for the template provider --
+true, and only because that path emits the optimiser's own items unchanged. The
+fault-injection study measures the verifier against generators that *do* err, with
+every fault labelled as injected:
+
+| Injected fault | Cases | Detected | Reached the user |
+|---|---|---|---|
+| `hallucinated_food` | 90 | 100% | 0% |
+| `impossible_form` | 90 | 100% | 0% |
+| `inflated_claim` | 90 | 100% | 0% |
+| `reintroduced_hazard` | 30 | 100% | 0% |
+| `quantity_drift` | 90 | 94% | 6% |
+
+`quantity_drift` is the only leaky class, and for a defensible reason: a ±10% tolerance
+is a ±10% tolerance, so a drift on a small item that moves the meal total by less than
+that is inside the stated bound rather than missed.
 
 ## 7. Data flow and artefacts
 

@@ -158,6 +158,17 @@ class CounterfactualObjective:
         self.use_distance = use_distance
         self.n_evaluations = 0
 
+        # Distance is measured relative to the size of the meal being edited, not
+        # against a fixed number of grams. A constant scale silently makes big
+        # meals un-editable: dropping a 330 ml cola from a 560 g lunch cost 0.66
+        # against an achievable validity gain of 0.83, so the optimiser correctly
+        # concluded the edit was not worth making and returned the burger, fries
+        # and cola unchanged. Relative to the meal, that same edit costs 0.24.
+        # The configured value acts as a floor so a very small snack does not make
+        # every gram punitive.
+        planned_mass = sum(v.planned_quantity_g for v in space.variables)
+        self.distance_scale_g = max(planned_mass, self.config.distance_scale_g)
+
     # -- single candidate ---------------------------------------------------
 
     def terms(self, x: np.ndarray) -> ObjectiveTerms:
@@ -215,7 +226,7 @@ class CounterfactualObjective:
             )
             validity = config.lambda_validity * max(0.0, config.target_score - suitability[i])
             distance = (
-                config.lambda_distance * l1 / config.distance_scale_g if self.use_distance else 0.0
+                config.lambda_distance * l1 / self.distance_scale_g if self.use_distance else 0.0
             )
             sparsity = config.lambda_sparsity * n_changed if self.use_sparsity else 0.0
             sparsity += config.lambda_form_preference * form_cost if self.use_sparsity else 0.0

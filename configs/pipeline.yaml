@@ -104,9 +104,16 @@ stage2:
   lambda_sparsity: 0.15
   big_penalty: 1000.0
 
-  # Grams by which the L1 distance is normalised, so the distance term is
-  # comparable across meals of different sizes.
-  distance_scale_g: 200.0
+  # FLOOR for the L1 normalisation. The distance term is normalised by the
+  # planned meal's own mass, so "how big a change is this" means the same thing
+  # for a 200 g snack and a 700 g dinner; this value only kicks in for meals
+  # smaller than it, so a tiny snack does not make every gram punitive.
+  #
+  # A fixed scale was measurably wrong. At 200 g, dropping a 330 ml cola from a
+  # 560 g burger-and-fries lunch cost 0.66 against an achievable validity gain of
+  # 0.83 -- so the optimiser correctly judged the edit not worth making and
+  # returned the meal untouched. Relative to the meal, the same edit costs 0.24.
+  distance_scale_g: 150.0
 
   # A quantity moved by less than this is not counted as a change; without it,
   # floating-point noise reads as an edit.
