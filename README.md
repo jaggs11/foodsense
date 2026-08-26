@@ -485,7 +485,7 @@ docs/                      # architecture, evaluation, traceability, demo script
 - [x] **Phase 3** — Stage-2 optimiser + DiCE/Wachter/greedy baselines
 - [x] **Phase 4** — Stage-3 RAG + Stage-4 verifier + end-to-end pipeline
 - [x] **Phase 5** — FastAPI + React UI, served from one origin, offline
-- [ ] **Phase 6** — full evaluation, docs, ship
+- [x] **Phase 6** — full evaluation regenerated and verified against a manifest, docs, ship hygiene
 
 ---
 
