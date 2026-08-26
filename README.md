@@ -126,7 +126,14 @@ make setup    # create .venv, install dependencies
 make data     # build the curated USDA food database
 make train    # train the Stage-1 suitability surrogate
 make demo     # run all three demo scenarios end-to-end
+
+make serve    # build the UI and serve it + the API on http://127.0.0.1:8000
 ```
+
+`make serve` binds **loopback only**. That is the entire security boundary and it
+is deliberate: there is no auth because there is nothing here to authenticate
+against, and binding every interface would turn a laptop demo into an
+unauthenticated service on whatever network you are on.
 
 <details>
 <summary><b>Windows (no GNU make)</b></summary>
@@ -138,14 +145,16 @@ GNU `make` is not installed on Windows by default. `make.ps1` mirrors every targ
 ./make.ps1 data
 ./make.ps1 train
 ./make.ps1 demo
+./make.ps1 serve
+```
+
+Or drive the CLI directly, which is what `serve` does underneath:
+
+```powershell
+.\.venv\Scripts\python.exe -m foodsense.cli serve
+.\.venv\Scripts\python.exe -m foodsense.cli serve --no-open --port 8080
 ```
 </details>
-
-Web UI:
-
-```bash
-make serve    # builds the frontend, serves API + UI on http://localhost:8000
-```
 
 Docker:
 
@@ -284,7 +293,7 @@ docs/                      # architecture, evaluation, traceability, demo script
 - [x] **Phase 2** — `RuleEngine`, guideline configs, Stage-1 surrogate
 - [x] **Phase 3** — Stage-2 optimiser + DiCE/Wachter/greedy baselines
 - [x] **Phase 4** — Stage-3 RAG + Stage-4 verifier + end-to-end pipeline
-- [ ] **Phase 5** — FastAPI + React UI + Docker
+- [x] **Phase 5** — FastAPI + React UI, served from one origin, offline
 - [ ] **Phase 6** — full evaluation, docs, ship
 
 ---
