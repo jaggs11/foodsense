@@ -288,6 +288,14 @@ it never edits anything.
 | Safe | 100% | 100% | 100% | **100%** | 100% | 100% |
 | Edits | 1.60 | 1.81 | 2.33 | **3.19** | 3.79 | 4.29 |
 
+**These two tables are not measured on the same sample, so do not read the
+difference as disagreement.** The sweep runs **90 cases** (30 per age group) at each
+of six settings, because it re-optimises every case six times; the comparison table
+above runs **300** (100 per age group). At the shipped weight the sweep reads 34%
+against the comparison's 29% — the same code and the same seeds on a third of the
+cases. **The 300-case figure is the one to quote**; the sweep is sized to show the
+shape of the trade-off, not to place validity to the percentage point.
+
 Validity moves from 2% to 66%; safety is 100% at every setting and availability
 violations 0% at every setting. Those two are properties of the formulation, not
 of the weight, and the sweep is the falsifiable form of that claim — if the terms
@@ -340,15 +348,21 @@ the sweep above measures, not a defect.
 ### Where counterfactual search has purchase
 
 A finding that came out of testing a hypothesis that turned out to be wrong.
-Meals breaching a hard sodium ceiling end up valid **more** often than meals that
-started under it — 50% vs 30% — which looks like the safety constraint helping.
-It is not.
+Among the 61 cases whose profile carries a hard sodium ceiling, the 18 whose planned
+meal breached it end up valid **more** often than the 43 that started under it —
+50% vs 30% — which looks like the safety constraint helping. It is not.
 
 A hard-rule breach multiplies the composite score by 0.10, so a breaching meal is
 *mechanically* at the bottom of the starting-score distribution: all 18 start
 below 0.080, against a clean-meal range running to 0.736. Stratifying on the
-starting score collapses the gap entirely — within the low stratum, breached meals
-are valid 50% of the time and clean ones 50%.
+starting score collapses the gap entirely — within the low stratum (n=30), breached
+meals (n=18) are valid 50% of the time and clean ones (n=12) 50%.
+
+**Read this as a direction, not an effect size.** The stratified comparison rests on
+18 breaching meals against 12 clean ones; that is enough to say the convenient story
+— that the hard ceiling depresses validity — is contradicted by the sign, and not
+enough to put a number on the mechanism. The 300-case pattern below is the
+better-powered version of the same claim.
 
 The real mechanism is the shape of the validity term. It scales with distance
 below target, so a meal starting near zero generates strong optimisation pressure
