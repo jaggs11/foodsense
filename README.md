@@ -1,31 +1,42 @@
 # FoodSense
 
-**An Availability-Aware, Verification-Guided Counterfactual Food Recommendation System**
+**Tells you the smallest change to the meal you already planned, using only food you already have, so it is safe for who is eating it.**
 
 [![CI](https://github.com/aarush093/foodsense/actions/workflows/ci.yml/badge.svg)](https://github.com/aarush093/foodsense/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Offline-first](https://img.shields.io/badge/demo-offline--first-success.svg)](#quickstart)
 
-FoodSense takes the meal a person **actually planned to eat**, and the ingredients they
-**actually have**, and computes the *smallest set of edits* that makes that meal meet their
-health goal and their life-stage safety requirements — then verifies every gram of the
-result against the USDA FoodData Central database before showing it to anyone.
+![FoodSense running the toddler choking scenario: four-stage stepper, metrics strip, and the meal diff showing grapes re-formed from whole to quartered and whole peanuts removed](docs/img/ui-toddler-run.png)
 
-It extends **MetaPlate** (Arefeen, Johnston & Ghasemzadeh, IEEE JBHI 2026 — arXiv:2606.10120),
-which pairs a postprandial-glucose predictor with a counterfactual optimiser and an LLM-RAG
-translation layer, along five axes: availability-awareness, modification-based editing,
-post-generation verification, generalised health goals, and age/life-stage personalisation.
+<sub>A real run, captured from the app. A toddler's lunch of whole grapes and whole peanuts, repaired in 1.6 seconds — entirely offline, no API key.</sub>
 
-> **Status:** complete and demo-ready. **All four stages run end to end, offline, with
-> no API key**; `make demo` walks the three scenarios from the proposal and `make serve`
-> opens the web UI on localhost. Every result in `results/` was regenerated from the
-> shipped code and checked against a hash manifest. No evaluation number appears in this
-> repository until the script that produces it has actually been run.
->
-> Two things are **not** verified and are labelled as such wherever they appear: the
-> Docker build (see below) and the LLM providers (no API key in the development
-> environment — the offline template path is the one that is exercised).
+- **The problem.** Diet advice tells people to eat things they do not have, and generic "healthy meal" suggestions ignore that whole grapes are a choking hazard at 18 months but quartered ones are not.
+- **What is new.** The search space is built from the planned meal plus the pantry and *nothing else*, hazards are a property of `(food, preparation form)` so a grape can be fixed by quartering rather than deleting, and every generated claim is re-checked against USDA before display.
+- **What was measured.** Over 300 cases: **0% availability violations, 0% safety violations, 100% safe** — while actively editing 3.03 items per meal, at the smallest distance of any method that edits at all (norm-L1 0.796).
+
+**FoodSense reaches its nutrition target in 29% of cases — lower than the unconstrained baselines, and that is the design working.** Strip the safety and sparsity terms from the same search and validity rises to 34%, bought with a hard-safety violation in 35% of meals and nearly twice the edits. Widen the space to foods the user lacks and Wachter-style scores 34% valid but only **8% usable**: 76 of its 101 successes depend on an ingredient that is not in the kitchen. Validity itself is a dial — the `lambda_validity` sweep moves it from **2% to 66%**, with safety at **100% at every setting** and availability violations at 0% at every setting. Those two do not move because they are structural: an unavailable food has no decision variable to select, and the safety penalty outweighs any achievable gain. The weight was fixed at 5.0 in Phase 3, from that sweep, **before the 300-case comparison had been run** — because choosing it afterwards would be fitting a hyperparameter to the evaluation it is reported against. Validity is tunable. Safety is not a setting.
+
+Full tables, the ablation ladder and the per-case decomposition are in [`results/`](results/) and summarised [below](#results).
+
+---
+
+## What this extends, and what is not verified
+
+FoodSense extends **MetaPlate** (Arefeen, Johnston & Ghasemzadeh, IEEE JBHI 2026 —
+arXiv:2606.10120), which pairs a postprandial-glucose predictor with a counterfactual
+optimiser and an LLM-RAG translation layer, along five axes: availability-awareness,
+modification-based editing, post-generation verification, generalised health goals, and
+age/life-stage personalisation.
+
+Every result in `results/` was regenerated from the shipped code and checked against a
+hash manifest. No evaluation number appears in this repository until the script that
+produces it has actually been run.
+
+Two things are **not** verified, and are labelled as such wherever they appear: the
+Docker build (Docker is not installed on the development machine, so it has never been
+executed) and the LLM providers (no API key in the development environment — the offline
+template path is the one that is exercised).
 
 ---
 
