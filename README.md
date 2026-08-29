@@ -481,7 +481,7 @@ Everything is seeded and every artefact is regenerable from a clean clone.
 | Confirm nothing moved | `make verify-results` — diffs `results/` against `results/MANIFEST.sha256` and classifies each change as IDENTICAL / EXPECTED / UNEXPECTED |
 | Rebuild the food database | `make data` |
 | Retrain Stage 1 | `make train` |
-| Environment | Python 3.12, Node 24 (UI only); exact pins in `requirements.txt` and `frontend/package-lock.json` |
+| Environment | Developed on Python 3.12 and Node 24; the package declares `>=3.11` and CI runs the suite on **both 3.11 and 3.12**. Exact pins in `requirements.txt` and `frontend/package-lock.json` |
 
 Clean-clone check, run before each release — and note the last two steps, which
 exist because a defect once hid in exactly the gap between them:

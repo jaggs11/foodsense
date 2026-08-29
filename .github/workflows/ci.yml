@@ -13,17 +13,29 @@ concurrency:
 
 jobs:
   python:
-    name: ruff + pytest (py3.11)
+    # Both ends of the range pyproject declares (requires-python = ">=3.11").
+    # The floor is what an examiner is most likely to have; the ceiling is what
+    # this was developed on. Testing only one of them leaves the other claimed
+    # but unverified.
+    name: ruff + pytest (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: requirements.txt
 
+      # No `make data` or `make train` step: the curated USDA database and the
+      # trained Stage-1 models are committed, which is what lets a fresh clone
+      # run the full suite offline. If either were generated here instead, CI
+      # would be testing artefacts nobody else has.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -36,5 +48,35 @@ jobs:
       - name: Format check (ruff)
         run: ruff format --check .
 
+      # No key and no network are needed: Stage 3 defaults to the deterministic
+      # offline template, and the provider tests stub the SDK client rather than
+      # calling one. A test that needed either would be a test that cannot run
+      # here, and there are none.
       - name: Test (pytest, excluding slow)
         run: pytest -m "not slow"
+
+  frontend:
+    name: frontend build + vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      # The bundle is what `foodsense serve` actually serves, so a build that
+      # breaks breaks the demo. Cheap to check and previously unchecked.
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Test (vitest)
+        working-directory: frontend
+        run: npm test

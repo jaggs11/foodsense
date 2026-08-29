@@ -21,6 +21,7 @@ one.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -379,6 +380,36 @@ class TestTheToddlerHeadline:
         assert "grape" in text
 
 
+#: ANSI SGR sequences, which Rich emits whenever it believes it is writing to a
+#: terminal.
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI.sub("", text or "")
+
+
+def _plain_output_env() -> dict[str, str]:
+    """An environment in which Rich renders plain, wide, unstyled help.
+
+    Without this the assertion below is really a test of the *terminal*, not of
+    the CLI. Rich decides for itself whether to emit escape sequences and how
+    wide to wrap, and it treats CI as a colour-capable terminal at 80 columns --
+    so `serve --help` came back styled and hard-wrapped under GitHub Actions
+    while rendering plain and wide on a developer machine. The literal being
+    searched for then straddled a wrap and the test failed in CI only.
+
+    Pinning NO_COLOR, TERM and COLUMNS makes the subprocess render the same way
+    everywhere, and dropping the variables Rich uses to force terminal mode stops
+    the host CI from overriding that.
+    """
+    env = dict(os.environ)
+    for forcing in ("FORCE_COLOR", "GITHUB_ACTIONS", "TTY_COMPATIBLE", "CLICOLOR_FORCE"):
+        env.pop(forcing, None)
+    env.update(NO_COLOR="1", TERM="dumb", COLUMNS="200", LINES="50")
+    return env
+
+
 class TestTheApiIsImportableTheWayTheCliImportsIt:
     """The API must be reachable from the *installed distribution*, not the repo.
 
@@ -440,20 +471,21 @@ class TestTheApiIsImportableTheWayTheCliImportsIt:
 
     def test_serve_help_works_from_another_directory(self):
         """End to end through the CLI entry point, from a directory that is not ours."""
-        # Decoded as UTF-8 explicitly. The CLI re-encodes its own streams so Rich
-        # box-drawing survives a cp1252 console; a parent that decodes with the
-        # ambient Windows codepage then chokes on those same bytes and hands back
-        # a None stdout, which looks exactly like a crash and is not one.
         result = subprocess.run(
             [sys.executable, "-m", "foodsense.cli", "serve", "--help"],
             capture_output=True,
             text=True,
+            # Decoded as UTF-8 explicitly. The CLI re-encodes its own streams so
+            # Rich box-drawing survives a cp1252 console; a parent decoding with
+            # the ambient Windows codepage then chokes on those same bytes and
+            # returns a None stdout, which looks exactly like a crash and is not.
             encoding="utf-8",
             errors="replace",
             cwd=tempfile.gettempdir(),
+            env=_plain_output_env(),
         )
         assert result.returncode == 0, result.stderr
-        assert "--port" in result.stdout
+        assert "--port" in _strip_ansi(result.stdout)
 
     def test_the_frontend_path_is_anchored_to_the_module_not_the_cwd(self):
         """Resolved by walking up from the module file, so cwd cannot change it."""
