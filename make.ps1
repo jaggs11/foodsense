@@ -96,7 +96,7 @@ FoodSense targets (./make.ps1 <target>):
         & $Py experiments/run_llm_benchmark.py
         Write-Host 'Now check results/ against its manifest:  ./make.ps1 verify-results'
     }
-    'verify-results' { Require-Venv; & $Py scripts/verify_results.py }
+    'verify-results' { Require-Venv; & $Py scripts/verify_results.py --results-dir results/archive/v1_multiage_counterfactual }
     'frontend' {
         Push-Location frontend
         try { npm install; npm run build } finally { Pop-Location }

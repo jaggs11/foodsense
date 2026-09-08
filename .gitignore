@@ -21,6 +21,10 @@ htmlcov/
 .ipynb_checkpoints/
 
 # --- data ---
+# Acquired evidence documents are never committed; knowledge/sources/sources.yaml
+# records their hashes and provenance instead (ruling R9).
+knowledge/raw/*
+!knowledge/raw/.gitkeep
 # Full dataset downloads land here and are NEVER committed.
 data/raw/*
 data/interim/

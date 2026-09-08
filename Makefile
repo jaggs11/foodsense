@@ -87,7 +87,7 @@ eval:
 
 # Every evaluated number lives in results/. This says whether any of them moved.
 verify-results:
-	$(PY) scripts/verify_results.py
+	$(PY) scripts/verify_results.py --results-dir results/archive/v1_multiage_counterfactual
 
 frontend:
 	cd frontend && npm install && npm run build

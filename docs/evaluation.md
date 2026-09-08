@@ -80,3 +80,31 @@ otherwise conflate them.
 ## Metric definitions
 
 _(Phase 3-6: each metric gets its formula and rationale here as it is implemented.)_
+
+---
+
+## Archived note: what the surrogate's error was measured against
+
+*Recorded during P0 of the repositioning. Archived rather than acted on: the
+studies this belongs to measured a population the system no longer serves, and
+are parked under ruling R10 until the P9 re-run on the toddler and condition
+harness.*
+
+The surrogate's reported error was computed against the **noised training label**
+(0.0572). That is the wrong denominator for the claim it was being used to
+support. The label carries deliberate Gaussian noise (sigma = 0.05) as weak
+supervision; measuring the model against it charges the model for noise that was
+added on purpose.
+
+Measured instead against the **decision-relevant quantity** -- the rule engine's
+own `soft_score`, which is what the optimiser is actually climbing -- the error
+is approximately 0.0306.
+
+Both numbers are about the same model. The first answers "how closely did it fit
+the labels it was given", the second "how closely does it track the thing the
+optimiser cares about". Only the second bears on whether Stage 2's search is
+guided by a faithful objective, which is the claim the figure was cited for.
+
+Neither number is re-derived here, and neither is a new result: they are recorded
+so the correction is not lost between the pre-repositioning evaluation and the
+P9 re-run, which will recompute both on the toddler and condition harness.

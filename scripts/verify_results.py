@@ -32,8 +32,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS = ROOT / "results"
-MANIFEST = RESULTS / "MANIFEST.sha256"
+#: Default artefact directory. Overridable with --results-dir so an archived set
+#: verifies with the same digests it was written with -- moving results under
+#: results/archive/<tag>/ must not cost the integrity check that makes them
+#: worth archiving.
+DEFAULT_RESULTS = ROOT / "results"
+MANIFEST_NAME = "MANIFEST.sha256"
 
 #: Lines that legitimately differ between two runs of the same experiment on the
 #: same code. A generation stamp is not a result; neither is how many
@@ -103,11 +107,11 @@ def _canonical(path: Path) -> str | None:
     )
 
 
-def _read_manifest() -> dict[str, str]:
-    if not MANIFEST.exists():
-        sys.exit(f"No manifest at {MANIFEST}. Create one with --update.")
+def _read_manifest(manifest: Path) -> dict[str, str]:
+    if not manifest.exists():
+        sys.exit(f"No manifest at {manifest}. Create one with --update.")
     entries: dict[str, str] = {}
-    for line in MANIFEST.read_text(encoding="utf-8").splitlines():
+    for line in manifest.read_text(encoding="utf-8").splitlines():
         if line.startswith("#") or not line.strip():
             continue
         digest, _, name = line.partition("  ")
@@ -115,11 +119,24 @@ def _read_manifest() -> dict[str, str]:
     return entries
 
 
-def _current_files() -> list[Path]:
-    return sorted(p for p in RESULTS.rglob("*") if p.is_file() and p.name != MANIFEST.name)
+def _current_files(results: Path) -> list[Path]:
+    return sorted(p for p in results.rglob("*") if p.is_file() and p.name != MANIFEST_NAME)
 
 
-def _write_manifest(files: list[Path]) -> None:
+def _manifest_name(path: Path, results: Path) -> str:
+    """The name a file is recorded under, stable across where the repo sits.
+
+    Repo-relative, so an archived set keeps the digests it was written with and
+    only its path prefix changes. A results directory outside the repository (a
+    scratch verification run) falls back to naming relative to that directory.
+    """
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.relative_to(results).as_posix()
+
+
+def _write_manifest(files: list[Path], manifest: Path) -> None:
     try:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=ROOT
@@ -137,8 +154,8 @@ def _write_manifest(files: list[Path]) -> None:
         "#",
     ]
     for path in files:
-        lines.append(f"{_digest(path)}  {path.relative_to(ROOT).as_posix()}")
-    MANIFEST.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        lines.append(f"{_digest(path)}  {_manifest_name(path, manifest.parent)}")
+    manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -153,16 +170,31 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="git ref to compare canonical content against, e.g. phase-4.5",
     )
+    parser.add_argument(
+        "--results-dir",
+        default=str(DEFAULT_RESULTS),
+        help=(
+            "artefact directory to verify (default: results/). Point it at "
+            "results/archive/<tag>/ to verify an archived set."
+        ),
+    )
     args = parser.parse_args(argv)
 
-    files = _current_files()
+    results = Path(args.results_dir)
+    if not results.is_absolute():
+        results = ROOT / results
+    if not results.is_dir():
+        sys.exit(f"No such results directory: {results}")
+    manifest = results / MANIFEST_NAME
+
+    files = _current_files(results)
     if args.update:
-        _write_manifest(files)
+        _write_manifest(files, manifest)
         print(f"manifest updated: {len(files)} files")
         return 0
 
-    recorded = _read_manifest()
-    present = {p.relative_to(ROOT).as_posix(): p for p in files}
+    recorded = _read_manifest(manifest)
+    present = {_manifest_name(p, results): p for p in files}
 
     identical: list[str] = []
     expected: list[str] = []
