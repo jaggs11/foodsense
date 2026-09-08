@@ -40,6 +40,7 @@ from foodsense.constraints.age_rules import nearest_safe_form
 from foodsense.constraints.engine import RuleEngine
 from foodsense.data.fdc import DEFAULT_MATCH_THRESHOLD, FoodDB, get_food_db
 from foodsense.schemas import (
+    Form,
     ItemCorrection,
     Meal,
     MealItem,
@@ -197,13 +198,19 @@ def _repair(
     grapes keeps the food on the plate, removing them does not. Removal is what
     happens when no form is safe.
     """
-    offending: set[str] = set()
-    for violation in engine.evaluate(items, profile).hard_violations:
-        offending.update(violation.offending_items)
+    # Keyed on (food_id, form), not food_id. A meal may hold the same food in two
+    # preparations -- beef minced into a sauce and beef in chunks beside it -- and
+    # only the chunks are the hazard. Repairing by food_id alone would take the
+    # sauce off the plate too, log that it "has no safe preparation" when minced
+    # is precisely its safe preparation, and still report final_pass=True.
+    offending: set[tuple[str, Form]] = {
+        (structural.item.food_id, structural.item.form)
+        for structural in engine.structural_violations(items, profile)
+    }
 
     repaired: list[MealItem] = []
     for item in items:
-        if item.food_id not in offending:
+        if (item.food_id, item.form) not in offending:
             repaired.append(item)
             continue
 
@@ -244,12 +251,13 @@ def _repair(
     # pass catches that; beyond two the meal is genuinely unfixable and
     # `final_pass` will say so rather than looping.
     if repaired != items and engine.evaluate(repaired, profile).hard_violations:
-        still_offending: set[str] = set()
-        for violation in engine.evaluate(repaired, profile).hard_violations:
-            still_offending.update(violation.offending_items)
+        still_offending: set[tuple[str, Form]] = {
+            (structural.item.food_id, structural.item.form)
+            for structural in engine.structural_violations(repaired, profile)
+        }
         survivors: list[MealItem] = []
         for item in repaired:
-            if item.food_id in still_offending:
+            if (item.food_id, item.form) in still_offending:
                 report.safety_fixes.append(
                     SafetyFix(
                         rule_id="verification.removed",
@@ -271,7 +279,11 @@ def _repair(
                 report.safety_fixes = [
                     fix
                     for fix in report.safety_fixes
-                    if not (fix.rule_id == "verification.reformed" and fix.food_id == item.food_id)
+                    if not (
+                        fix.rule_id == "verification.reformed"
+                        and fix.food_id == item.food_id
+                        and fix.new_form == item.form
+                    )
                 ]
                 continue
             survivors.append(item)

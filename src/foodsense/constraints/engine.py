@@ -209,6 +209,20 @@ class RuleEngine:
             threshold=crossed,
         )
 
+    def structural_violations(
+        self, meal: Meal | list[MealItem], profile: UserProfile
+    ) -> list[StructuralViolation]:
+        """Hard-safety breaches, each carrying the exact item that caused it.
+
+        :meth:`evaluate` flattens these into :class:`Violation` objects whose
+        ``offending_items`` are food_ids. That is enough to *report* a hazard but
+        not enough to *repair* one: safety is a property of ``(food, form)``, so a
+        meal can hold the same food twice with only one preparation at fault.
+        Stage 4 needs the item, not the id.
+        """
+        items = meal.items if isinstance(meal, Meal) else list(meal)
+        return self._structural_checks(items, profile)
+
     def _structural_checks(
         self, items: list[MealItem], profile: UserProfile
     ) -> list[StructuralViolation]:

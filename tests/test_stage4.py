@@ -645,3 +645,74 @@ class TestTheSecondRepairPass:
         assert not report.final_pass
         assert any(v.rule_id == "flag.hypertension.sodium_mg" for v in report.flagged)
         assert final.items, "an unrepairable numeric rule must not empty the plate"
+
+
+class TestRepairTargetsTheItemNotTheFood:
+    """Safety is a property of ``(food, form)``, so repair must be too.
+
+    The project's whole modelling premise is that "whole grapes" and "quartered
+    grapes" are different objects: one is a hazard and the other is the fix. A
+    meal may legitimately contain the same food twice in different preparations
+    -- beef minced into a sauce and beef in chunks alongside it. When the chunks
+    trip a choking rule, the minced portion is not implicated and must survive.
+
+    ``Violation.offending_items`` carries food_ids only, so a repair that keys on
+    food_id alone cannot tell the two apart. Stage 3 already guards against this
+    (``translate.py`` pairs the food_id with the planned form); these assert
+    Stage 4 does too.
+    """
+
+    @pytest.fixture(scope="class")
+    def same_food_two_forms(self, db, engine, toddler):
+        """Beef served both as chunks (a hazard) and already minced (safe)."""
+        beef = db.find("174013")
+        assert beef is not None
+        hazard = MealItem(food_id=beef.fdc_id, name=beef.name, quantity_g=40.0, form=Form.WHOLE)
+        already_safe = MealItem(
+            food_id=beef.fdc_id, name=beef.name, quantity_g=30.0, form=Form.MINCED
+        )
+        return [hazard, already_safe], beef.fdc_id
+
+    def test_the_setup_is_what_it_claims(self, same_food_two_forms, engine, toddler):
+        """Guard: the chunks must be unsafe and the minced portion safe."""
+        (hazard, already_safe), _ = same_food_two_forms
+        assert engine.evaluate([hazard], toddler).hard_violations
+        assert not engine.evaluate([already_safe], toddler).hard_violations
+
+    def test_the_already_safe_portion_is_not_removed(
+        self, same_food_two_forms, db, engine, toddler
+    ):
+        items, _ = same_food_two_forms
+        final, _ = verify(items, toddler, db=db, engine=engine)
+        # The chunks are re-formed to minced, so the returned meal holds two
+        # minced portions. What matters is that no grams went missing: the
+        # already-safe 30 g is still there alongside the repaired 40 g.
+        assert len(final.items) == 2, "an item was dropped from the plate"
+        assert sum(i.quantity_g for i in final.items) == pytest.approx(70.0)
+        assert all(i.form is Form.MINCED for i in final.items)
+
+    def test_no_food_is_silently_dropped(self, same_food_two_forms, db, engine, toddler):
+        """Every gram in must be accounted for: still served, or logged as removed."""
+        items, _ = same_food_two_forms
+        final, report = verify(items, toddler, db=db, engine=engine)
+        removed = sum(
+            item.quantity_g
+            for item in items
+            for fix in report.safety_fixes
+            if fix.action == "remove" and fix.food_id == item.food_id
+        )
+        served = sum(i.quantity_g for i in final.items)
+        assert served + removed >= sum(i.quantity_g for i in items)
+
+    def test_a_safe_item_is_never_logged_as_having_no_safe_preparation(
+        self, same_food_two_forms, db, engine, toddler
+    ):
+        """The removal message is a factual claim; it must not be made falsely."""
+        items, _ = same_food_two_forms
+        _, report = verify(items, toddler, db=db, engine=engine)
+        removals = [f for f in report.safety_fixes if f.action == "remove"]
+        for fix in removals:
+            assert fix.old_form is not Form.MINCED, (
+                "minced beef was logged as having no safe preparation, "
+                "but minced is its safe preparation"
+            )
