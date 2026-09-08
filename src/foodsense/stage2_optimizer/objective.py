@@ -40,7 +40,12 @@ from foodsense.constraints.engine import RuleEngine
 from foodsense.schemas import UserProfile
 from foodsense.stage1_prediction.features import meal_features
 from foodsense.stage1_prediction.predict import SuitabilityModel
-from foodsense.stage2_optimizer.space import SearchSpace, served_quantity
+from foodsense.stage2_optimizer.space import (
+    CHANGE_EPSILON_G,
+    MIN_SERVING_G,
+    SearchSpace,
+    served_quantity,
+)
 
 __all__ = ["CounterfactualObjective", "ObjectiveConfig", "ObjectiveTerms", "meal_diff"]
 
@@ -62,8 +67,8 @@ class ObjectiveConfig:
     distance_scale_g: float = 200.0
     #: Tolerance below which a *served* amount has not meaningfully moved. Not a
     #: presence floor -- see ``space.MIN_SERVING_G`` for the three-way distinction.
-    change_epsilon_g: float = 2.0
-    min_serving_g: float = 10.0
+    change_epsilon_g: float = CHANGE_EPSILON_G
+    min_serving_g: float = MIN_SERVING_G
     lambda_form_preference: float = 0.05
     target_score: float = 0.70
 
@@ -78,8 +83,8 @@ class ObjectiveConfig:
             lambda_sparsity=float(stage2.get("lambda_sparsity", 0.15)),
             big_penalty=float(stage2.get("big_penalty", 1000.0)),
             distance_scale_g=float(stage2.get("distance_scale_g", 200.0)),
-            change_epsilon_g=float(stage2.get("change_epsilon_g", 2.0)),
-            min_serving_g=float(stage2.get("min_serving_g", 10.0)),
+            change_epsilon_g=float(stage2.get("change_epsilon_g", CHANGE_EPSILON_G)),
+            min_serving_g=float(stage2.get("min_serving_g", MIN_SERVING_G)),
             lambda_form_preference=float(stage2.get("lambda_form_preference", 0.05)),
             target_score=float(stage1.get("target_score", 0.70)),
         )

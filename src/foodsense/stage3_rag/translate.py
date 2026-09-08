@@ -26,6 +26,7 @@ from foodsense.schemas import (
     UserProfile,
     Violation,
 )
+from foodsense.stage2_optimizer.objective import ObjectiveConfig
 from foodsense.stage3_rag.providers import (
     LLMProvider,
     TemplateProvider,
@@ -41,9 +42,18 @@ def build_diff(
     planned: Meal,
     optimized: Meal,
     violations: list[Violation],
-    change_epsilon_g: float = 2.0,
+    change_epsilon_g: float | None = None,
 ) -> MealDiff:
-    """What changed between two meals, with a reason attached where one exists."""
+    """What changed between two meals, with a reason attached where one exists.
+
+    ``change_epsilon_g`` defaults to the *configured* tolerance, not to a literal
+    of its own. The number decides whether a served amount has meaningfully moved,
+    and Stage 2 has already priced the edit using it; a second copy here would let
+    ``configs/pipeline.yaml`` move one and not the other, so the diff a user reads
+    would describe edits the optimiser never charged for.
+    """
+    if change_epsilon_g is None:
+        change_epsilon_g = ObjectiveConfig.load().change_epsilon_g
     planned_by_id = {i.food_id: i for i in planned.items}
     optimized_by_id = {i.food_id: i for i in optimized.items}
 

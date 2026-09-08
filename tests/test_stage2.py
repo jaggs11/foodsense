@@ -489,3 +489,49 @@ class TestBaselines:
         result = run_method("dice_genetic", context)
         assert result.evaluations <= context.budget + 1
         assert result.note
+
+
+class TestTheEditThresholdHasOneOwner:
+    """``change_epsilon_g`` and ``min_serving_g`` must mean the same thing everywhere.
+
+    Three components decide what counts as an edit: the objective (which prices
+    it), the decoder (which puts it on the plate) and ``build_diff`` (which tells
+    the user about it). ``configs/pipeline.yaml`` is meant to be the single dial.
+    If a component carries its own copy of the number, tuning the config makes the
+    explanation disagree with the optimisation that produced it -- the user is
+    shown an edit the optimiser never charged for, or not shown one it did.
+    """
+
+    def test_the_defaults_are_not_independent_copies(self):
+        """One source, not three literals that happen to match today."""
+        from foodsense.stage2_optimizer.objective import ObjectiveConfig
+        from foodsense.stage2_optimizer.space import CHANGE_EPSILON_G, MIN_SERVING_G
+
+        assert ObjectiveConfig().change_epsilon_g is CHANGE_EPSILON_G
+        assert ObjectiveConfig().min_serving_g is MIN_SERVING_G
+
+    def test_build_diff_honours_the_configured_tolerance(self, monkeypatch):
+        """A configured tolerance must reach the diff the user actually reads.
+
+        With a 6 g tolerance a 4 g move is not an edit. ``build_diff`` called
+        without an explicit epsilon must agree, rather than falling back to a
+        literal of its own.
+        """
+        from foodsense.stage2_optimizer import objective as objective_module
+        from foodsense.stage3_rag import translate as translate_module
+        from foodsense.stage3_rag.translate import build_diff
+
+        wide = objective_module.ObjectiveConfig(change_epsilon_g=6.0)
+        monkeypatch.setattr(translate_module.ObjectiveConfig, "load", classmethod(lambda cls: wide))
+
+        db = get_food_db()
+        rice = db.search("rice white long grain cooked", limit=1)[0][0]
+        planned = Meal(items=[rice.as_item(100.0)])
+        optimized = Meal(items=[rice.as_item(104.0)])  # 4 g: inside a 6 g tolerance
+
+        diff = build_diff(planned, optimized, [])
+        kinds = {c.change_type for c in diff.changes}
+        assert kinds == {"unchanged"}, (
+            "a 4 g move was reported as an edit despite a configured 6 g tolerance; "
+            "build_diff is using its own copy of the threshold"
+        )

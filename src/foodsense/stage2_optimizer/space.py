@@ -48,13 +48,19 @@ QUANTITY_RESOLUTION_G = 1.0
 #:     portion. Owned by :func:`served_quantity` and used by every consumer of a
 #:     decision vector, so the decoder and the objective's diff cannot disagree
 #:     about what is on the plate.
-#: ``change_epsilon_g`` (``ObjectiveConfig``, 2 g)
+#: ``CHANGE_EPSILON_G`` (here, 2 g)
 #:     The *no-op* tolerance. A served amount that moved by less than this is not
-#:     an edit; without it, floating-point noise reads as one.
-#: ``build_diff(change_epsilon_g=...)`` (Stage 3)
-#:     The same idea one stage later, applied to already-decoded meals so the
-#:     user-facing diff reports exactly the edits the optimiser paid for.
+#:     an edit; without it, floating-point noise reads as one. Stage 3's
+#:     ``build_diff`` applies the same number one stage later to already-decoded
+#:     meals, so the user-facing diff reports exactly the edits the optimiser
+#:     paid for.
+#:
+#: Both live here, and ``ObjectiveConfig`` takes them as its defaults rather than
+#: restating the literals. They were three independent copies of ``10.0`` and
+#: ``2.0``; tuning ``configs/pipeline.yaml`` moved some of them and not others,
+#: which is how the explanation came to disagree with the optimisation behind it.
 MIN_SERVING_G = 10.0
+CHANGE_EPSILON_G = 2.0
 
 
 def served_quantity(
