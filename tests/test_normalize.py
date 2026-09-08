@@ -54,9 +54,7 @@ class TestNameKeyCollapsesMeaninglessVariation:
         # U+FF2D..U+FF41: the full-width forms of M, A, S, A, L, A. Built from
         # codepoints because the literal glyphs are what the test is about, and a
         # linter is right to flag them as ambiguous in ordinary source.
-        fullwidth_masala = "".join(
-            chr(c) for c in (0xFF2D, 0xFF41, 0xFF53, 0xFF41, 0xFF4C, 0xFF41)
-        )
+        fullwidth_masala = "".join(chr(c) for c in (0xFF2D, 0xFF41, 0xFF53, 0xFF41, 0xFF4C, 0xFF41))
         assert name_key(f"{fullwidth_masala} Dosa") == "masala dosa"
 
     def test_a_trailing_qualifier_does_not_create_a_new_food(self):
