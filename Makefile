@@ -22,7 +22,7 @@ endif
 PY   := $(BIN)/python
 PIP  := $(BIN)/pip
 
-.PHONY: help setup data train demo test eval serve api frontend lint format clean docker-build docker-up
+.PHONY: help setup data train demo test eval serve api frontend lint format clean docker-build docker-up hooks
 
 help:
 	@echo "FoodSense targets:"
@@ -42,8 +42,14 @@ setup:
 	$(PY) -m pip install --upgrade pip
 	$(PIP) install -r requirements.txt
 	$(PIP) install -e .
+	@$(MAKE) --no-print-directory hooks
 	@echo ""
 	@echo "Setup complete. Optional extras: $(PIP) install -r requirements-optional.txt"
+
+hooks:
+	@cp scripts/hooks/commit-msg .git/hooks/commit-msg
+	@chmod +x .git/hooks/commit-msg
+	@echo "Installed commit-msg hook into .git/hooks/."
 
 data:
 	$(PY) -m foodsense.data.build_food_db

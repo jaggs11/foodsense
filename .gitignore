@@ -42,7 +42,10 @@ npm-debug.log*
 yarn-error.log*
 
 # --- local tooling ---
-.claude/settings.local.json
+# Assistant memory/config stays local: never tracked, never pushed (ruling R11).
+.claude/
+CLAUDE.md
+AGENTS.md
 
 # --- os / editor ---
 .DS_Store

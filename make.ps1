@@ -10,7 +10,7 @@
 #>
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('help', 'setup', 'data', 'train', 'demo', 'test', 'test-fast', 'eval',
+    [ValidateSet('help', 'setup', 'hooks', 'data', 'train', 'demo', 'test', 'test-fast', 'eval',
                  'frontend', 'api', 'serve', 'lint', 'format', 'verify-results',
                  'docker-build', 'docker-up', 'clean')]
     [string]$Target = 'help'
@@ -26,6 +26,17 @@ $Py = Join-Path $Bin 'python.exe'
 $Pip = Join-Path $Bin 'pip.exe'
 $Ruff = Join-Path $Bin 'ruff.exe'
 
+function Install-Hooks {
+    $src = Join-Path $Root 'scripts/hooks/commit-msg'
+    $dst = Join-Path $Root '.git/hooks/commit-msg'
+    if (Test-Path (Join-Path $Root '.git/hooks')) {
+        Copy-Item $src $dst -Force
+        Write-Output 'Installed commit-msg hook into .git/hooks/.'
+    } else {
+        Write-Output 'No .git/hooks directory; skipping hook install.'
+    }
+}
+
 function Require-Venv {
     if (-not (Test-Path $Py)) {
         throw "No virtual environment found at $Venv. Run: ./make.ps1 setup"
@@ -36,7 +47,8 @@ switch ($Target) {
     'help' {
         Write-Output @'
 FoodSense targets (./make.ps1 <target>):
-  setup   - create .venv and install dependencies
+  setup   - create .venv, install dependencies, install git hooks
+  hooks   - install git hooks only
   data    - build the curated USDA food DB + corpus samples
   train   - train the Stage-1 suitability surrogate
   demo    - run the three demo scenarios offline
@@ -53,8 +65,13 @@ FoodSense targets (./make.ps1 <target>):
         & $Py -m pip install --upgrade pip
         & $Pip install -r requirements.txt
         & $Pip install -e .
+        Install-Hooks
         Write-Output ''
         Write-Output "Setup complete. Optional extras: $Pip install -r requirements-optional.txt"
+    }
+
+    'hooks' {
+        Install-Hooks
     }
     'data' {
         Require-Venv

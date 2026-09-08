@@ -1,0 +1,47 @@
+#!/bin/sh
+# commit-msg -- reject machine-authored attribution in commit messages.
+#
+# Repository policy: nothing pushed carries attribution to an automated
+# authoring tool. The checks below are deliberately written against the
+# *shape* of such attribution (a co-author trailer, a generation banner,
+# a known no-reply address) rather than against any vendor or product
+# name, so this file states a rule without advertising what it filters.
+#
+# Installed into .git/hooks/commit-msg by `make setup` (and make.ps1).
+# Bypass is possible with --no-verify; do not do that on this project.
+
+msg_file="$1"
+[ -f "$msg_file" ] || exit 0
+
+status=0
+
+fail() {
+    # $1 = human-readable rule, $2 = offending line
+    printf '%s\n' "commit-msg: rejected -- $1" >&2
+    printf '%s\n' "  offending line: $2" >&2
+    status=1
+}
+
+# Strip comment lines (git's template) before scanning: a rule named in the
+# commented help text must not itself trip the hook.
+body=$(grep -v '^#' "$msg_file")
+
+# 1. Any co-author trailer, regardless of who is named. Human co-authorship
+#    on this project is recorded in the commit author field, not a trailer.
+line=$(printf '%s\n' "$body" | grep -iE '^[[:space:]]*co-authored-by[[:space:]]*:' | head -1)
+[ -n "$line" ] && fail "co-author trailers are not permitted in this repository" "$line"
+
+# 2. Generation banners emitted by automated authoring tools.
+line=$(printf '%s\n' "$body" | grep -iE 'generated with' | head -1)
+[ -n "$line" ] && fail "generation banners are not permitted" "$line"
+
+# 3. The no-reply address such tools attach to trailers.
+line=$(printf '%s\n' "$body" | grep -iE 'noreply@anthropic\.com' | head -1)
+[ -n "$line" ] && fail "automated-tool no-reply addresses are not permitted" "$line"
+
+if [ "$status" -ne 0 ]; then
+    printf '%s\n' "" >&2
+    printf '%s\n' "Edit the message and commit again. See docs/pivot.md (ruling R11)." >&2
+fi
+
+exit "$status"
