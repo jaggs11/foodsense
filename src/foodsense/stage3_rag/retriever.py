@@ -26,7 +26,8 @@ from functools import lru_cache
 
 from rank_bm25 import BM25Okapi
 
-from foodsense.data.fdc import FoodDB, FoodRecord, get_food_db
+from foodsense.data.fdc import FoodDB, FoodRecord
+from foodsense.data.repository import FoodRepository, get_food_repository
 
 __all__ = ["FoodRetriever", "RetrievedFood", "get_retriever"]
 
@@ -56,9 +57,14 @@ class RetrievedFood:
 class FoodRetriever:
     """BM25 index over food names, categories and interaction tags."""
 
-    def __init__(self, db: FoodDB | None = None) -> None:
-        self.db = db or get_food_db()
-        self._records = self.db.records
+    def __init__(self, db: FoodDB | None = None, repository: FoodRepository | None = None) -> None:
+        # The corpus is built through the repository so that what can be RETRIEVED
+        # and what can be RECOMMENDED are the same set by construction. Indexing a
+        # pending or unverified row would let it reach a generator, and the
+        # generator has no way to know it should not have.
+        self._repo = repository or (FoodRepository(db) if db is not None else get_food_repository())
+        self.db = self._repo.db
+        self._records = self._repo.records()
         # Category and tags join the document text so that a query like
         # "something low sodium" or "a vegetable" can retrieve on more than the
         # literal name.

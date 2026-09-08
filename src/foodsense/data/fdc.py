@@ -295,6 +295,7 @@ class FoodRecord:
     source_name: str = ""
     source_reference: str = ""
     cuisine: str = "international"
+    veg_status: str = "unknown"
     confidence: str = "unknown"
     verification_status: str = "verified"
 
@@ -421,6 +422,7 @@ class FoodDB:
                     source_name=row.get("source_name") or "",
                     source_reference=row.get("source_reference") or "",
                     cuisine=row.get("cuisine") or "international",
+                    veg_status=row.get("veg_status") or "unknown",
                     confidence=row.get("confidence") or "unknown",
                     verification_status=row.get("verification_status") or "verified",
                 )

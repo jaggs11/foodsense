@@ -38,6 +38,7 @@ import numpy as np
 from foodsense import SEED
 from foodsense.constraints.engine import RuleEngine
 from foodsense.data.fdc import FoodDB
+from foodsense.data.repository import FoodRepository
 from foodsense.schemas import AgeGroup, Goal, HealthFlag, Meal, MealItem, UserProfile
 from foodsense.stage1_prediction.features import feature_names, meal_features
 
@@ -171,7 +172,10 @@ def perturb_meal(meal: Meal, rng: random.Random, db: FoodDB) -> Meal:
         items.pop(rng.randrange(len(items)))
 
     elif operation == "add_one":
-        candidates = [r for r in db.records if r.category in _ADDABLE_CATEGORIES]
+        # Through the repository: the surrogate must not learn from foods that
+        # would never be recommendable, or it learns a corpus the optimiser cannot
+        # search.
+        candidates = [r for r in FoodRepository(db).records() if r.category in _ADDABLE_CATEGORIES]
         if candidates:
             record = rng.choice(candidates)
             items.append(record.as_item(round(rng.uniform(*_ADDED_ITEM_G), 1)))

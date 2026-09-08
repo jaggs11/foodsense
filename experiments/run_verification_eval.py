@@ -52,6 +52,7 @@ from foodsense import RESULTS_DIR, SEED
 from foodsense.constraints.engine import RuleEngine
 from foodsense.data.corpora import load_meals
 from foodsense.data.fdc import FoodDB, get_food_db
+from foodsense.data.repository import FoodRepository
 from foodsense.pipeline import run_pipeline
 from foodsense.schemas import AgeGroup, Form, Meal, MealItem, UserProfile
 from foodsense.stage1_prediction.labels import sample_profile
@@ -245,7 +246,7 @@ def _cases(db: FoodDB, n: int, seed: int = SEED, stratify: bool = False):
     and the most important fault class ends up measured on a handful of cases.
     """
     meals = [m.meal for m in load_meals("foodcom", limit=n * 2, rows=n * 12)]
-    pool = [r for r in db.records if r.category in PANTRY_CATEGORIES]
+    pool = [r for r in FoodRepository(db).records() if r.category in PANTRY_CATEGORIES]
     groups = list(AgeGroup)
     rng = random.Random(seed)
     for i in range(n):

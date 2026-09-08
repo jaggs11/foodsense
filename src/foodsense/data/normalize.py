@@ -137,6 +137,7 @@ def find_similar(
     cuisine: str | None = None,
     limit: int = 5,
     db: FoodDB | None = None,
+    repository: object | None = None,
     aliases: dict[str, str] | None = None,
     threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
 ) -> list[SimilarFood]:
@@ -151,7 +152,15 @@ def find_similar(
     same food whatever cuisine they were filed under, and filtering exact hits by
     cuisine would let a mislabelled row become a duplicate.
     """
-    db = db if db is not None else get_food_db()
+    # Duplicate detection must see EVERY row, pending and rejected included:
+    # warning about a collision with a row awaiting review is the entire point,
+    # and hiding it would let the same food be submitted twice.
+    if repository is not None:
+        records = repository.records(include_unverified=True)
+        db = repository.db
+    else:
+        db = db if db is not None else get_food_db()
+        records = db.records
     key = name_key(name)
     if not key:
         return []
@@ -159,7 +168,7 @@ def find_similar(
     found: list[SimilarFood] = []
     seen: set[str] = set()
 
-    for record in db.records:
+    for record in records:
         if name_key(record.name) == key:
             found.append(SimilarFood(record=record, score=100.0, reason="exact_name"))
             seen.add(record.fdc_id)

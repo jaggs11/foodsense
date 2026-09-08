@@ -46,6 +46,7 @@ from foodsense.api.models import (
     ScenarioSummary,
 )
 from foodsense.data.fdc import get_food_db
+from foodsense.data.repository import get_food_repository
 from foodsense.schemas import Meal, PipelineTrace
 
 
@@ -219,12 +220,19 @@ def foods(
     q: str = Query(default="", max_length=100, description="substring or fuzzy name query"),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[FoodSummary]:
-    """Autocomplete over the curated database."""
-    db = get_food_db()
+    """Autocomplete over the food knowledge base.
+
+    Through the repository, so the picker offers only foods that may actually be
+    recommended. A pending or rejected row appearing here would be a food a user
+    can select and the pipeline must then refuse.
+    """
+    repo = get_food_repository()
     # search() ranks and returns (record, score) pairs; the score is the matcher's
     # business, not the UI's.
     records = (
-        [record for record, _ in db.search(q, limit=limit)] if q.strip() else db.records[:limit]
+        [record for record, _ in repo.search(q, limit=limit)]
+        if q.strip()
+        else repo.records()[:limit]
     )
     return [
         FoodSummary(

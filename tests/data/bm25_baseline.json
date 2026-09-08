@@ -1,0 +1,306 @@
+{
+  "adult_weight": {
+    "candidates_for": {
+      "Beverages, carbonated, cola, regular": [
+        "Beverages, carbonated, cola, regular",
+        "Beverages, carbonated, cola, fast-food cola",
+        "Beverages, carbonated, cola, without caffeine",
+        "Beverages, carbonated, orange",
+        "Beverages, carbonated, ginger ale"
+      ],
+      "Fast foods, hamburger; single, regular patty; plain": [
+        "Fast foods, hamburger; single, regular patty; plain",
+        "Fast foods, hamburger; single, regular patty; with condiments",
+        "Fast foods, cheeseburger; single, regular patty; plain",
+        "Fast foods, cheeseburger; single, large patty; plain",
+        "Fast foods, cheeseburger; single, large patty; with condiments"
+      ],
+      "Potatoes, french fried, steak fries, salt added in processing, frozen, as purchased": [
+        "Potatoes, french fried, steak fries, salt added in processing, frozen, as purchased",
+        "Potatoes, french fried, shoestring, salt added in processing, frozen, as purchased",
+        "Potatoes, french fried, cottage-cut, salt not added in processing, frozen, as purchased",
+        "Potatoes, french fried, crinkle or regular cut, salt added in processing, frozen, as purchased",
+        "Potatoes, french fried, steak fries, salt added in processing, frozen, oven-heated"
+      ]
+    },
+    "query_names": [
+      "Fast foods, hamburger; single, regular patty; plain",
+      "Potatoes, french fried, steak fries, salt added in processing, frozen, as purchased",
+      "Beverages, carbonated, cola, regular"
+    ],
+    "search": {
+      "Beverages, carbonated, cola, regular": [
+        [
+          "174852",
+          "Beverages, carbonated, cola, regular",
+          19.728962
+        ],
+        [
+          "175093",
+          "Beverages, carbonated, cola, fast-food cola",
+          16.57608
+        ],
+        [
+          "174851",
+          "Beverages, carbonated, cola, without caffeine",
+          14.511079
+        ],
+        [
+          "174854",
+          "Beverages, carbonated, orange",
+          11.237275
+        ],
+        [
+          "174846",
+          "Beverages, carbonated, ginger ale",
+          10.478191
+        ]
+      ],
+      "Fast foods, hamburger; single, regular patty; plain": [
+        [
+          "170693",
+          "Fast foods, hamburger; single, regular patty; plain",
+          33.251935
+        ],
+        [
+          "170694",
+          "Fast foods, hamburger; single, regular patty; with condiments",
+          24.885519
+        ],
+        [
+          "170690",
+          "Fast foods, cheeseburger; single, regular patty; plain",
+          24.355654
+        ],
+        [
+          "170294",
+          "Fast foods, cheeseburger; single, large patty; plain",
+          20.397475
+        ],
+        [
+          "172082",
+          "Fast foods, cheeseburger; single, large patty; with condiments",
+          15.845678
+        ]
+      ],
+      "Potatoes, french fried, steak fries, salt added in processing, frozen, as purchased": [
+        [
+          "168444",
+          "Potatoes, french fried, steak fries, salt added in processing, frozen, as purchased",
+          39.546998
+        ],
+        [
+          "170451",
+          "Potatoes, french fried, shoestring, salt added in processing, frozen, as purchased",
+          35.712447
+        ],
+        [
+          "169265",
+          "Potatoes, french fried, cottage-cut, salt not added in processing, frozen, as purchased",
+          32.711872
+        ],
+        [
+          "170436",
+          "Potatoes, french fried, crinkle or regular cut, salt added in processing, frozen, as purchased",
+          31.393043
+        ],
+        [
+          "168445",
+          "Potatoes, french fried, steak fries, salt added in processing, frozen, oven-heated",
+          30.92696
+        ]
+      ]
+    }
+  },
+  "elderly_sodium": {
+    "candidates_for": {
+      "Crackers, saltines (includes oyster, soda, soup)": [
+        "Crackers, saltines (includes oyster, soda, soup)",
+        "Crackers, saltines, low salt (includes oyster, soda, soup)",
+        "Crackers, saltines, unsalted tops (includes oyster, soda, soup)",
+        "Crackers, saltines, whole wheat (includes multi-grain)",
+        "Soup, oyster stew, canned, condensed"
+      ],
+      "Soup, tomato, canned, condensed": [
+        "Soup, tomato, canned, condensed",
+        "Soup, tomato bisque, canned, condensed",
+        "Soup, tomato rice, canned, condensed",
+        "Soup, tomato beef with noodle, canned, condensed",
+        "Soup, tomato, canned, condensed, reduced sodium"
+      ]
+    },
+    "query_names": [
+      "Soup, tomato, canned, condensed",
+      "Crackers, saltines (includes oyster, soda, soup)"
+    ],
+    "search": {
+      "Crackers, saltines (includes oyster, soda, soup)": [
+        [
+          "172746",
+          "Crackers, saltines (includes oyster, soda, soup)",
+          26.779722
+        ],
+        [
+          "175056",
+          "Crackers, saltines, low salt (includes oyster, soda, soup)",
+          21.154612
+        ],
+        [
+          "175057",
+          "Crackers, saltines, unsalted tops (includes oyster, soda, soup)",
+          21.154612
+        ],
+        [
+          "167942",
+          "Crackers, saltines, whole wheat (includes multi-grain)",
+          13.264016
+        ],
+        [
+          "171553",
+          "Soup, oyster stew, canned, condensed",
+          8.717108
+        ]
+      ],
+      "Soup, tomato, canned, condensed": [
+        [
+          "172882",
+          "Soup, tomato, canned, condensed",
+          14.954537
+        ],
+        [
+          "172881",
+          "Soup, tomato bisque, canned, condensed",
+          14.219005
+        ],
+        [
+          "171557",
+          "Soup, tomato rice, canned, condensed",
+          14.219005
+        ],
+        [
+          "171160",
+          "Soup, tomato beef with noodle, canned, condensed",
+          12.948473
+        ],
+        [
+          "171587",
+          "Soup, tomato, canned, condensed, reduced sodium",
+          12.948473
+        ]
+      ]
+    }
+  },
+  "toddler_choking": {
+    "candidates_for": {
+      "Grapes, muscadine, raw": [
+        "Grapes, muscadine, raw",
+        "Grapes, green, seedless, raw",
+        "Grapes, red, seedless, raw",
+        "Grapes, american type (slip skin), raw",
+        "Grapes, red or green (European type, such as Thompson seedless), raw"
+      ],
+      "Peanuts, all types, dry-roasted, without salt": [
+        "Peanuts, all types, dry-roasted, without salt",
+        "Peanuts, all types, oil-roasted, without salt",
+        "Peanuts, all types, oil-roasted, with salt",
+        "Peanuts, all types, dry-roasted, with salt",
+        "Peanuts, all types, cooked, boiled, with salt"
+      ],
+      "Rice, white, long-grain, regular, enriched, cooked": [
+        "Rice, white, long-grain, regular, enriched, cooked",
+        "Rice, white, long-grain, regular, cooked, enriched, with salt",
+        "Rice, white, long-grain, parboiled, enriched, cooked",
+        "Rice, white, long-grain, regular, cooked, unenriched, with salt",
+        "Rice, white, long-grain, precooked or instant, enriched, dry"
+      ]
+    },
+    "query_names": [
+      "Grapes, muscadine, raw",
+      "Peanuts, all types, dry-roasted, without salt",
+      "Rice, white, long-grain, regular, enriched, cooked"
+    ],
+    "search": {
+      "Grapes, muscadine, raw": [
+        [
+          "173040",
+          "Grapes, muscadine, raw",
+          19.656346
+        ],
+        [
+          "2263891",
+          "Grapes, green, seedless, raw",
+          9.353587
+        ],
+        [
+          "2263890",
+          "Grapes, red, seedless, raw",
+          9.353587
+        ],
+        [
+          "174682",
+          "Grapes, american type (slip skin), raw",
+          8.240312
+        ],
+        [
+          "174683",
+          "Grapes, red or green (European type, such as Thompson seedless), raw",
+          6.350656
+        ]
+      ],
+      "Peanuts, all types, dry-roasted, without salt": [
+        [
+          "173806",
+          "Peanuts, all types, dry-roasted, without salt",
+          19.721072
+        ],
+        [
+          "175258",
+          "Peanuts, all types, oil-roasted, without salt",
+          18.900029
+        ],
+        [
+          "174261",
+          "Peanuts, all types, oil-roasted, with salt",
+          18.402651
+        ],
+        [
+          "174262",
+          "Peanuts, all types, dry-roasted, with salt",
+          17.753777
+        ],
+        [
+          "174260",
+          "Peanuts, all types, cooked, boiled, with salt",
+          14.273307
+        ]
+      ],
+      "Rice, white, long-grain, regular, enriched, cooked": [
+        [
+          "168878",
+          "Rice, white, long-grain, regular, enriched, cooked",
+          27.566431
+        ],
+        [
+          "169753",
+          "Rice, white, long-grain, regular, cooked, enriched, with salt",
+          24.895661
+        ],
+        [
+          "169708",
+          "Rice, white, long-grain, parboiled, enriched, cooked",
+          23.163606
+        ],
+        [
+          "168935",
+          "Rice, white, long-grain, regular, cooked, unenriched, with salt",
+          20.745179
+        ],
+        [
+          "169709",
+          "Rice, white, long-grain, precooked or instant, enriched, dry",
+          19.628309
+        ]
+      ]
+    }
+  }
+}

@@ -48,6 +48,7 @@ from foodsense import RESULTS_DIR, SEED
 from foodsense.constraints.engine import RuleEngine
 from foodsense.data.corpora import load_meals
 from foodsense.data.fdc import FoodDB, get_food_db
+from foodsense.data.repository import FoodRepository
 from foodsense.schemas import AgeGroup, Meal
 from foodsense.stage1_prediction.labels import sample_profile
 from foodsense.stage1_prediction.predict import get_suitability_model
@@ -105,7 +106,7 @@ def build_cases(db: FoodDB, n_per_group: int, seed: int = SEED):
     meals = [m.meal for m in load_meals("foodcom", limit=n_per_group * 2, rows=n_per_group * 12)]
     if not meals:
         raise RuntimeError("No corpus meals available; run `make data` first.")
-    pool = [r for r in db.records if r.category in PANTRY_CATEGORIES]
+    pool = [r for r in FoodRepository(db).records() if r.category in PANTRY_CATEGORIES]
     rng = random.Random(seed)
     for age_group in AgeGroup:
         for i in range(n_per_group):

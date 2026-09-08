@@ -38,7 +38,8 @@ import time
 
 from foodsense.constraints.age_rules import nearest_safe_form
 from foodsense.constraints.engine import RuleEngine
-from foodsense.data.fdc import DEFAULT_MATCH_THRESHOLD, FoodDB, get_food_db
+from foodsense.data.fdc import DEFAULT_MATCH_THRESHOLD, FoodDB
+from foodsense.data.repository import FoodRepository, get_food_repository
 from foodsense.schemas import (
     Form,
     ItemCorrection,
@@ -78,12 +79,14 @@ def verify(
     db: FoodDB | None = None,
     engine: RuleEngine | None = None,
     retriever: FoodRetriever | None = None,
+    repository: FoodRepository | None = None,
     match_threshold: float = DEFAULT_MATCH_THRESHOLD,
     tolerance: float = DEFAULT_TOLERANCE,
 ) -> tuple[Meal, VerificationReport]:
     """Verify and repair a generated item list. Returns the final meal and the report."""
     started = time.perf_counter()
-    db = db or get_food_db()
+    repository = repository or (FoodRepository(db) if db is not None else get_food_repository())
+    db = repository.db
     engine = engine or RuleEngine(db=db)
     retriever = retriever or get_retriever()
 
@@ -97,7 +100,10 @@ def verify(
             # The id is not real. Fall back to matching on the name, then to the
             # retriever, so a hallucinated id degrades to the nearest real food
             # rather than to a silent zero-nutrient item.
-            record, score = db.match(item.name, threshold=match_threshold)
+            # Through the repository: Stage 4 asks whether a generated name is a
+            # real food we hold, which is a different question from whether it may
+            # be recommended, so this is deliberately not visibility-filtered.
+            record, score = repository.match(item.name, threshold=match_threshold)
             if record is None:
                 grounded = retriever.ground(item.name)
                 report.unmatched.append(item.name)
