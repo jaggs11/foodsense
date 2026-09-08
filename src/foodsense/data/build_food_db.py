@@ -50,6 +50,14 @@ from pathlib import Path
 import pandas as pd
 
 from foodsense import FOOD_DB_PARQUET, FOOD_DB_SQLITE, PROCESSED_DIR, RAW_DIR, SEED
+from foodsense.data.normalize import name_key
+from foodsense.data.schema import (
+    FOODS_COLUMNS,
+    MIGRATION_TIMESTAMP,
+    USDA_PROVENANCE,
+    ddl_statements,
+)
+from foodsense.data.units import NutrientBasis
 from foodsense.schemas import NUTRIENTS, Form
 
 FDC_DIR = RAW_DIR / "fdc"
@@ -61,8 +69,7 @@ SOURCES: dict[str, str] = {
         "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_sr_legacy_food_csv_2018-04.zip"
     ),
     "foundation.zip": (
-        "https://fdc.nal.usda.gov/fdc-datasets/"
-        "FoodData_Central_foundation_food_csv_2025-04-24.zip"
+        "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_foundation_food_csv_2025-04-24.zip"
     ),
 }
 
@@ -435,13 +442,17 @@ FORMS_BY_HAZARD: dict[str, tuple[Form, ...]] = {
 #: A category is too coarse for physical form: "dairy" covers both cheddar (which
 #: slices) and yogurt (which does not), and slicing a soup is meaningless.
 FORMS_BY_KEYWORD: tuple[tuple[str, tuple[Form, ...]], ...] = (
-    (r"^Cheese,|^Cheese food|^Cheese product", (Form.WHOLE, Form.SLICED, Form.CHOPPED,
-                                                Form.GROUND, Form.MASHED)),
+    (
+        r"^Cheese,|^Cheese food|^Cheese product",
+        (Form.WHOLE, Form.SLICED, Form.CHOPPED, Form.GROUND, Form.MASHED),
+    ),
     (r"^Egg, |^Eggs, ", (Form.WHOLE, Form.CHOPPED, Form.MASHED, Form.SOFT_COOKED)),
     (r"^Yogurt|^Kefir|^Sour cream|^Cream, |^Milk|^Buttermilk", (Form.WHOLE, Form.PUREED)),
     (r"^Soup, |^Fish broth|\bbroth\b|\bbouillon\b|^Gravy|^Sauce", (Form.WHOLE, Form.PUREED)),
-    (r"^Oil, |^Butter, |^Margarine|^Shortening|^Salad dressing|^Fat, ",
-     (Form.WHOLE, Form.THIN_SPREAD)),
+    (
+        r"^Oil, |^Butter, |^Margarine|^Shortening|^Salad dressing|^Fat, ",
+        (Form.WHOLE, Form.THIN_SPREAD),
+    ),
     (r"^Beverages|^Water|^Alcoholic|juice\b|^Tea,|^Coffee", (Form.WHOLE,)),
     (r"^Syrups|^Honey|^Jams|^Jellies|^Molasses", (Form.WHOLE, Form.THIN_SPREAD)),
 )
@@ -454,8 +465,10 @@ DEFAULT_FORM_HINTS: tuple[tuple[str, Form], ...] = (
     (r"\bminced\b", Form.MINCED),
     (r"\bsliced\b", Form.SLICED),
     (r"\bchopped\b", Form.CHOPPED),
-    (r"\bbutter\b.*\b(peanut|almond|cashew|nut)\b|\b(peanut|almond|cashew|nut) butter\b",
-     Form.SPOONFUL),
+    (
+        r"\bbutter\b.*\b(peanut|almond|cashew|nut)\b|\b(peanut|almond|cashew|nut) butter\b",
+        Form.SPOONFUL,
+    ),
     (r"\bcooked\b|\bboiled\b|\bbraised\b|\bsteamed\b", Form.SOFT_COOKED),
 )
 
@@ -580,8 +593,9 @@ def _assign_hazard_class(description: str, category: str) -> str:
             return "meat_chunk"
         if pattern and re.search(pattern, desc, flags=re.IGNORECASE):
             # "peanut butter" must not be caught by the nut rule.
-            if hazard in {"nut", "seed"} and re.search(r"\bbutter\b|\bflour\b|\boil\b|\bmilk\b",
-                                                       desc):
+            if hazard in {"nut", "seed"} and re.search(
+                r"\bbutter\b|\bflour\b|\boil\b|\bmilk\b", desc
+            ):
                 return ""
             return hazard
     return ""
@@ -670,9 +684,7 @@ def curate(report_only: bool = False) -> tuple[pd.DataFrame, BuildReport]:
     scoped = pd.Series(False, index=foods.index)
     for category, patterns in CATEGORY_SCOPED_EXCLUDE.items():
         in_category = foods["category"] == category
-        scoped |= in_category & foods["description"].apply(
-            lambda d, p=patterns: _matches_any(d, p)
-        )
+        scoped |= in_category & foods["description"].apply(lambda d, p=patterns: _matches_any(d, p))
     foods = foods[~(excluded | scoped) | foods["must_include"]].copy()
     n_after_exclude = len(foods)
     print(f"  after exclusion patterns  {n_after_exclude:6d}")
@@ -721,8 +733,7 @@ def curate(report_only: bool = False) -> tuple[pd.DataFrame, BuildReport]:
     # --- annotate ----------------------------------------------------------
     print("\nAnnotating hazard classes, tags and forms...")
     db["hazard_class"] = [
-        _assign_hazard_class(d, c)
-        for d, c in zip(db["description"], db["category"], strict=True)
+        _assign_hazard_class(d, c) for d, c in zip(db["description"], db["category"], strict=True)
     ]
     db["tags"] = [
         json.dumps(_assign_tags(row["description"], row["category"], row["hazard_class"], row))
@@ -736,24 +747,63 @@ def curate(report_only: bool = False) -> tuple[pd.DataFrame, BuildReport]:
     db["default_form"] = [d for _, d in forms]
 
     # --- final shape -------------------------------------------------------
+    # Nullable on purpose (ruling R8). This line used to end in .fillna(0.0), which
+    # made "USDA does not report this nutrient for this food" indistinguishable
+    # from "this food contains none of it". That was invisible while the corpus was
+    # single-source and nearly complete, and it is not survivable once a rule
+    # depends on a nutrient a source may not carry: added_sugars_g was 0.0 for
+    # 100% of rows and vitamin_d_ug for 82%, and vitamin D deficiency is one of the
+    # conditions the system is being repositioned to serve.
     for nutrient in NUTRIENTS:
-        db[nutrient] = pd.to_numeric(db[nutrient], errors="coerce").fillna(0.0).astype(float)
+        db[nutrient] = pd.to_numeric(db[nutrient], errors="coerce").astype("Float64")
 
     db = db.rename(columns={"description": "name"})
     db["fdc_id"] = db["fdc_id"].astype(str)
-    columns = [
-        "fdc_id",
-        "name",
-        "category",
-        "fdc_category",
-        "data_type",
-        "hazard_class",
-        "default_form",
-        "allowed_forms",
-        "tags",
-        *NUTRIENTS,
+
+    # --- provenance and descriptive columns (P1.2 migration) ---------------
+    # Every row here came from USDA, so every row is stamped as USDA. The id stays
+    # the bare fdc_id: committed scenarios and golden traces pin these values.
+    db["id"] = db["fdc_id"]
+    db["source_id"] = db["fdc_id"]
+    db["canonical_name"] = db["name"]
+    db["display_name"] = db["name"]
+    db["name_key"] = [name_key(n) for n in db["name"]]
+    for column, value in USDA_PROVENANCE.items():
+        db[column] = value
+    db["source_reference"] = [
+        f"https://fdc.nal.usda.gov/food-details/{i}/nutrients" for i in db["fdc_id"]
     ]
-    db = db[columns].sort_values("name", kind="stable").reset_index(drop=True)
+    db["basis"] = NutrientBasis.PER_100G.value
+    # Fixed, not wall-clock: two runs of `make data` must produce identical output.
+    db["created_at"] = MIGRATION_TIMESTAMP
+    db["updated_at"] = MIGRATION_TIMESTAMP
+
+    # Unknown rather than defaulted. USDA states none of these, and inventing a
+    # veg_status or a texture would be exactly the fabricated food-safety claim
+    # requirements section 8 forbids.
+    db["region"] = None
+    db["veg_status"] = "unknown"
+    db["texture"] = "unknown"
+    db["serving_size_g"] = None
+    db["serving_unit"] = None
+    db["serving_description"] = None
+    db["ingredients"] = None
+    db["preparation_method"] = None
+
+    db = db.rename(columns={"name": "_name"})
+    db["canonical_name"] = db["_name"]
+    columns = [*FOODS_COLUMNS, *NUTRIENTS]
+    db = db[columns].sort_values("canonical_name", kind="stable").reset_index(drop=True)
+
+    # The unique index on name_key covers active rows only. USDA descriptions can
+    # normalise to the same key (differing only by a parenthetical, say), so the
+    # first occurrence stays active and the rest are retained but deactivated --
+    # kept rather than dropped, because they are real rows with real provenance and
+    # a later source may want to reconcile them.
+    duplicate = db.duplicated("name_key", keep="first")
+    if duplicate.any():
+        db.loc[duplicate, "is_active"] = 0
+        print(f"  name_key collisions deactivated: {int(duplicate.sum())}")
 
     hazard_counts = Counter(h for h in db["hazard_class"] if h)
     tag_counts = Counter(t for tags in db["tags"] for t in json.loads(tags))
@@ -786,11 +836,24 @@ def write_outputs(db: pd.DataFrame, report: BuildReport) -> None:
     if FOOD_DB_SQLITE.exists():
         FOOD_DB_SQLITE.unlink()
     with sqlite3.connect(FOOD_DB_SQLITE) as conn:
-        db.to_sql("foods", conn, index=False)
-        conn.execute("CREATE UNIQUE INDEX idx_foods_fdc_id ON foods(fdc_id)")
-        conn.execute("CREATE INDEX idx_foods_category ON foods(category)")
-        conn.execute("CREATE INDEX idx_foods_hazard ON foods(hazard_class)")
-        conn.execute("CREATE TABLE build_info (key TEXT PRIMARY KEY, value TEXT)")
+        # Explicit DDL rather than to_sql's inference: the schema carries NOT NULL,
+        # CHECK constraints and the partial unique index on name_key, none of which
+        # pandas can express. The CHECKs are the point -- an out-of-vocabulary
+        # cuisine or verification_status should fail the build, not reach a user.
+        for statement in ddl_statements():
+            conn.execute(statement)
+        db.to_sql("foods", conn, index=False, if_exists="append")
+        conn.executemany(
+            "INSERT INTO sources (source_type, name, reference, license_note) VALUES (?, ?, ?, ?)",
+            [
+                (
+                    "usda",
+                    "USDA FoodData Central",
+                    "https://fdc.nal.usda.gov/",
+                    "US Government work, public domain.",
+                )
+            ],
+        )
         conn.executemany(
             "INSERT INTO build_info (key, value) VALUES (?, ?)",
             [
@@ -845,9 +908,7 @@ def print_report(db: pd.DataFrame, report: BuildReport) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stats", action="store_true", help="print the full build report")
-    parser.add_argument(
-        "--force-download", action="store_true", help="re-download the FDC bundles"
-    )
+    parser.add_argument("--force-download", action="store_true", help="re-download the FDC bundles")
     args = parser.parse_args(argv)
 
     if args.force_download:

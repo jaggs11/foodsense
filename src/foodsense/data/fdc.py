@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -33,6 +34,7 @@ import pandas as pd
 from rapidfuzz import fuzz, process
 
 from foodsense import FOOD_DB_PARQUET, FOOD_DB_SQLITE
+from foodsense.data.coverage import is_missing, zero_filled_vector
 from foodsense.schemas import NUTRIENTS, Form, Meal, MealItem, NutrientVector
 
 __all__ = [
@@ -81,9 +83,32 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 #: into its descriptions, none of which carries food identity.
 _STOPWORDS = frozenset(
     {
-        "a", "an", "and", "the", "of", "or", "in", "with", "without", "from", "for",
-        "to", "as", "by", "includes", "including", "usda", "s", "commodity",
-        "distribution", "program", "type", "types", "all", "prepared", "made",
+        "a",
+        "an",
+        "and",
+        "the",
+        "of",
+        "or",
+        "in",
+        "with",
+        "without",
+        "from",
+        "for",
+        "to",
+        "as",
+        "by",
+        "includes",
+        "including",
+        "usda",
+        "s",
+        "commodity",
+        "distribution",
+        "program",
+        "type",
+        "types",
+        "all",
+        "prepared",
+        "made",
     }
 )
 
@@ -113,15 +138,55 @@ def _tokenize(text: str) -> list[str]:
 #: qualifier away from the query, so plain position weighting cannot separate them.
 _HEAVY_QUALIFIERS = frozenset(
     {
-        "dehydrated", "dried", "powder", "powdered", "condensed", "concentrate",
-        "concentrated", "instant", "canned", "frozen", "syrup", "fried", "breaded",
-        "battered", "candied", "pickled", "smoked", "cured", "sweetened", "glutinous",
-        "imitation", "creamed", "freeze", "juice", "paste", "puree", "pureed", "flour",
-        "meal", "extract", "babyfood", "spread", "substitute", "flavored", "coated",
+        "dehydrated",
+        "dried",
+        "powder",
+        "powdered",
+        "condensed",
+        "concentrate",
+        "concentrated",
+        "instant",
+        "canned",
+        "frozen",
+        "syrup",
+        "fried",
+        "breaded",
+        "battered",
+        "candied",
+        "pickled",
+        "smoked",
+        "cured",
+        "sweetened",
+        "glutinous",
+        "imitation",
+        "creamed",
+        "freeze",
+        "juice",
+        "paste",
+        "puree",
+        "pureed",
+        "flour",
+        "meal",
+        "extract",
+        "babyfood",
+        "spread",
+        "substitute",
+        "flavored",
+        "coated",
         # Structural parts. "Orange peel" and "Grape leaves" are not oranges and
         # grapes, but their head token matches those queries exactly.
-        "peel", "peels", "rind", "zest", "leaves", "leaf", "skin", "skins",
-        "stems", "pits", "hulls", "shells",
+        "peel",
+        "peels",
+        "rind",
+        "zest",
+        "leaves",
+        "leaf",
+        "skin",
+        "skins",
+        "stems",
+        "pits",
+        "hulls",
+        "shells",
     }
 )
 _HEAVY_WEIGHT = 2.5
@@ -130,8 +195,20 @@ _HEAVY_WEIGHT = 2.5
 #: count, so a bare "carrots" is happy to land on "Carrots, raw".
 _NEUTRAL_QUALIFIERS = frozenset(
     {
-        "raw", "fresh", "cooked", "boiled", "drained", "plain", "regular", "whole",
-        "ripe", "unenriched", "enriched", "salt", "unsalted", "table",
+        "raw",
+        "fresh",
+        "cooked",
+        "boiled",
+        "drained",
+        "plain",
+        "regular",
+        "whole",
+        "ripe",
+        "unenriched",
+        "enriched",
+        "salt",
+        "unsalted",
+        "table",
     }
 )
 _NEUTRAL_WEIGHT = 0.3
@@ -183,7 +260,14 @@ class FoodDatabaseMissingError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class FoodRecord:
-    """One curated USDA food, with everything the pipeline needs about it."""
+    """One food from the knowledge base, with everything the pipeline needs.
+
+    ``fdc_id`` is the food id. The name is historical -- it holds a bare FDC id for
+    the migrated USDA rows and a ``<source_type>:<source_id>`` key for anything
+    else -- and is left alone until the read path is fully behind
+    ``FoodRepository``, because renaming it touches the verifier, the matcher, the
+    committed scenarios and every golden trace.
+    """
 
     fdc_id: str
     name: str
@@ -193,6 +277,38 @@ class FoodRecord:
     allowed_forms: tuple[Form, ...]
     tags: frozenset[str] = field(default_factory=frozenset)
     nutrients_per_100g: NutrientVector = field(default_factory=NutrientVector)
+
+    #: Which of the 33 nutrients this food's source actually reports.
+    #:
+    #: The vector above carries 0.0 for the rest, because the Stage-1 hot loop
+    #: needs a dense array and cannot branch per element. That substitution is
+    #: safe only while this mask travels with it: a nutrient absent from here is
+    #: *unknown*, and a rule that depends on one must return ``undetermined``
+    #: rather than read the zero and pass (ruling R8).
+    #:
+    #: Empty means the row predates the coverage column, not that nothing is
+    #: reported -- see :meth:`reports`.
+    reported_nutrients: frozenset[str] = field(default_factory=frozenset)
+
+    #: Provenance (requirements sections 9 and 10).
+    source_type: str = "usda"
+    source_name: str = ""
+    source_reference: str = ""
+    cuisine: str = "international"
+    confidence: str = "unknown"
+    verification_status: str = "verified"
+
+    def reports(self, nutrient: str) -> bool:
+        """Whether this food's source states a value for ``nutrient``.
+
+        ``False`` means unknown, never zero. A caller that needs the number must
+        check this first; one that only sums a vector may ignore it.
+        """
+        return nutrient in self.reported_nutrients
+
+    def unreported(self, nutrients: Iterable[str]) -> set[str]:
+        """Which of ``nutrients`` this food's source does not state."""
+        return {n for n in nutrients if n not in self.reported_nutrients}
 
     def has_tag(self, tag: str) -> bool:
         return tag in self.tags
@@ -279,18 +395,34 @@ class FoodDB:
         nutrient_columns = [n for n in NUTRIENTS if n in frame.columns]
         for row in frame.to_dict(orient="records"):
             allowed = tuple(Form(f) for f in json.loads(row["allowed_forms"]))
+
+            # Coverage is computed here and the zero-fill is delegated to the one
+            # named function that performs it (ruling R13). `reported` travels with
+            # the vector for the rest of its life: without it the 0.0 below would be
+            # indistinguishable from a measured zero, which is the whole defect
+            # this migration exists to end.
+            values = {n: row[n] for n in nutrient_columns}
+            reported = {n for n, v in values.items() if not is_missing(v)}
+
             records.append(
                 FoodRecord(
-                    fdc_id=str(row["fdc_id"]),
-                    name=row["name"],
+                    # `id` since the repositioning; `fdc_id` for a database built
+                    # before it, so an old parquet still loads.
+                    fdc_id=str(row.get("id", row.get("fdc_id"))),
+                    name=row.get("canonical_name") or row["name"],
                     category=row["category"],
                     hazard_class=row.get("hazard_class") or "",
                     default_form=Form(row["default_form"]),
                     allowed_forms=allowed,
                     tags=frozenset(json.loads(row["tags"])),
-                    nutrients_per_100g=NutrientVector(
-                        **{n: float(row[n]) for n in nutrient_columns}
-                    ),
+                    nutrients_per_100g=zero_filled_vector(values, reported),
+                    reported_nutrients=frozenset(reported),
+                    source_type=row.get("source_type") or "usda",
+                    source_name=row.get("source_name") or "",
+                    source_reference=row.get("source_reference") or "",
+                    cuisine=row.get("cuisine") or "international",
+                    confidence=row.get("confidence") or "unknown",
+                    verification_status=row.get("verification_status") or "verified",
                 )
             )
         return records
@@ -404,13 +536,10 @@ class FoodDB:
             name_tokens = self._token_sets[i]
 
             # Precision: how well each query token is satisfied by this food.
-            precision = (
-                sum(
-                    max((q for t, q in expansion.items() if t in name_tokens), default=0.0)
-                    for expansion in expansions
-                )
-                / len(query_tokens)
-            )
+            precision = sum(
+                max((q for t, q in expansion.items() if t in name_tokens), default=0.0)
+                for expansion in expansions
+            ) / len(query_tokens)
 
             # Recall: how much of the food's name the query accounts for.
             matched_weight = sum(
