@@ -93,17 +93,31 @@ preserved: the embedding model is cached locally under gitignored `models/embedd
 by `make setup`; if absent, the retriever degrades to BM25-only, logs it, and surfaces
 it in `GET /api/health`. It never raises.
 
-*On explaining the reversal.* The ruling as issued instructed that this document quote
-a Stage-3 design rationale reading "if the corpus grew to free-text recipes, revisit
-and go hybrid". **That sentence is not in this repository** — not on `main`, not at
-`phase-4.5`, not at `v1-multiage-counterfactual`; the words "hybrid" and "revisit"
-appear nowhere in the tracked tree. It is not quoted here, because quoting it would
-mean inventing a citation, which sections 13 and 39 of the mandate forbid and which
-would be a poor way to begin a document about not hiding things.
+*On explaining the reversal.* Ruling R6 as issued attributed a hybrid-retrieval
+rationale to `docs/architecture.md`, reading "if the corpus grew to free-text recipes,
+revisit and go hybrid". **That sentence has never existed in this repository at any
+commit** — not on `main`, not at `phase-4.5`, not at `v1-multiage-counterfactual`; the
+words "hybrid" and "revisit" appear nowhere in the tracked tree. The architect has
+since confirmed the sentence was his own, written from memory. Nothing is missing from
+`docs/architecture.md`, and no earlier plan was lost.
 
-What the repository actually argues is narrower, and is worth stating because it is
-the part the reversal has to respect. `stage3_rag/retriever.py` justifies BM25-only on
-offline grounds:
+It is not quoted here, because quoting it would mean manufacturing a citation, which
+sections 13 and 39 of the mandate forbid — and which would be a poor way to begin a
+document about not hiding things.
+
+The consequence is worth stating plainly, because it changes what this reversal *is*.
+The project never planned to go hybrid and then deferred it. Going hybrid is a
+decision being taken now, and it has to stand on its merits rather than on a
+back-reference.
+
+Those merits are real and sufficient on their own: the corpus is changing. Sections 12
+to 14 of the mandate require retrieving pediatric guidelines and research documents,
+which are free text, and BM25 alone over free-text evidence is weaker than BM25 fused
+with dense retrieval.
+
+What the repository actually argues is narrower, and both arguments are constraints
+the new design must keep meeting rather than objections to it.
+`stage3_rag/retriever.py` justifies BM25-only on offline grounds:
 
 > BM25 over names and categories, via `rank_bm25`, entirely local: no embedding model,
 > no network, no API key. That is a deliberate constraint rather than a simplification
@@ -117,13 +131,9 @@ and `docs/architecture.md` justifies keeping retrieval and matching distinct:
 > same food as one we hold". Using one for both would make verification partly
 > circular — grading the retriever against the retriever's own notion of similarity.
 
-Neither is a promise never to go hybrid; the first is a constraint the hybrid design
-must keep meeting, and R6 keeps it by degrading to BM25-only rather than by requiring
-the model. The second is an invariant the hybrid design must not break, and R6
-preserves it explicitly. The genuine reason for the reversal is simply that the corpus
-changed: the mandate (sections 12–14) requires retrieving guidelines and research
-documents, which are free text, and BM25 alone over free-text evidence is weaker than
-BM25 fused with dense retrieval.
+Neither is a promise never to go hybrid. R6 honours the first by degrading to
+BM25-only when the model is absent rather than by requiring it, and the second by
+leaving Stage 4's matcher alone.
 
 **R7 — Vector store.** Preference order: `sqlite-vec` inside the existing SQLite
 database (one file, one transaction covers the food row and its vector,
@@ -179,6 +189,31 @@ section of `docs/review_requirements.md` (§1–§50): requirement summary, stat
 (`not started` / `in progress` / `done` / `blocked: needs human`), owning phase,
 evidence (file paths, test names). Updated at the end of every phase. This document is
 how the panel will check the mandate was met; it is a deliverable.
+
+**R13 — True missingness is stored now, consumed at P3.** `build_food_db.py` applied
+`fillna(0.0)` across every nutrient column, so the database asserted a measured zero
+wherever USDA reported nothing. That is an R8 violation, it sits underneath Stage 1's
+training labels and Stage 4's verification claims, and it cannot be fixed in one step
+without moving every number the project has published — which collides with P1.7's
+requirement that the golden traces pass unmodified, and would make a migration bug
+indistinguishable from an intended change. So it is split:
+
+* **P1 — the database stops lying.** Nutrients a source does not report are stored
+  `NULL`. `data/coverage.NutrientCoverage` reports what is genuinely present, and
+  `FoodRecord.reported_nutrients` carries the mask alongside every vector.
+* **P1 — the pipeline keeps answering identically.** Every consumer reads through one
+  named, documented function, `data/coverage.zero_filled_vector()`, which applies the
+  historical zero-fill and says in its own docstring that it preserves
+  pre-repositioning behaviour and is retired in P3. No call site re-implements it.
+  Golden traces and demo-scenario outputs are byte-identical.
+* **P3 — consumers switch to honest missingness**, when the surrogate is retrained
+  toddler-only and condition-conditioned and every result is being regenerated anyway.
+
+The point of the split is auditability: the moment the pipeline's answers change is
+one dated, deliberate commit rather than a side effect of a schema migration. The
+measured scale of the fabrication, and the bound on how much P3 can move, are in
+`docs/evaluation.md`. Archived results stay exactly as produced; the note there
+records which regime produced them.
 
 ---
 

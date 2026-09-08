@@ -283,4 +283,84 @@ that is inside the stated bound rather than missed.
 
 ## 7. Data flow and artefacts
 
-_(Phase 1-2)_
+_Rewritten in P1 of the repositioning. See `docs/pivot.md`._
+
+### The food knowledge base
+
+One SQLite database at `data/processed/food_db.sqlite`, with a Parquet mirror that
+`FoodDB` prefers because it loads in milliseconds. The DDL lives in one place,
+`data/schema.py`, so the build, the migration and the repository cannot disagree
+about the shape of the table.
+
+`foods` holds 2,590 rows, all currently migrated USDA. Beyond the descriptive and
+safety columns it carries **provenance on every row** — `source_type`,
+`source_name`, `source_reference`, `source_id`, `confidence`, `verification_status`
+— because requirements sections 9 and 10 make provenance mandatory rather than
+optional, and because the moment a second source lands, "which source said this"
+stops being answerable from context.
+
+Five tables join it: `food_aliases`, `food_nutrients_extra` (nutrients outside the
+canonical 33), `food_toddler_meta` (age appropriateness, choking risk, allergens —
+every column nullable or admitting `unknown`, because inventing a safety claim is
+the most dangerous thing this system could do), `recipe_derivations` (how a
+`derived_recipe` row was computed, stored so the arithmetic can be audited), and
+`sources`.
+
+### Why the nutrient columns stay wide
+
+The 33 canonical nutrients are 33 columns rather than an entity-attribute-value
+table. EAV is the textbook answer for sparse optional attributes and would be the
+wrong one here: Stage 1 reads all 33 as a dense vector for every candidate in every
+generation of the optimiser's search, and a join-and-pivot per candidate would cost
+more than the rest of Stage 2 put together. Nutrients outside the 33 go in
+`food_nutrients_extra`, where sparsity is real and the access pattern is occasional.
+
+### Identity
+
+The primary key is `id`: `<source_type>:<source_id>` for new sources, and a bare
+`fdc_id` for the migrated USDA rows, whose ids are pinned by committed scenarios and
+golden traces. Namespaced rather than a UUID because both are strings — so
+`MealItem.food_id` needs no type change either way — but a UUID is random, and
+`make data` must reproduce byte-identical output. A namespaced key is a pure
+function of the source and its own identifier.
+
+Duplicate prevention is enforced by the database, not by review: `name_key` (the
+normal form from `data/normalize.py`) carries a unique index over active rows, so
+`Masala Dosa`, `masala dosa` and `Masala-Dosa` collide on insert rather than
+depending on someone reading a warning.
+
+### NULL means unknown, and never zero
+
+Nutrient columns are nullable. `NULL` means the source does not report the nutrient;
+it does not mean the food contains none of it. This is ruling R8, and it is the
+single most consequential change P1 makes to the data layer — the build used to end
+with `fillna(0.0)`, which made the two indistinguishable for the project's entire
+life.
+
+Because Stage 1 needs a dense array, the value 0.0 is still substituted when a
+record is materialised — but in exactly one named place,
+`data/coverage.zero_filled_vector()`, and only alongside
+`FoodRecord.reported_nutrients`, the mask saying which values are real. Summing a
+vector is fine. Concluding that a food contains no iron because `iron_mg == 0.0` is
+not, and `record.reports("iron_mg")` is how a caller asks. Ruling R13 retires the
+substitution in P3; `docs/evaluation.md` records the measured scale of what it was
+hiding.
+
+### Reading it
+
+Everything goes through `data/repository.FoodRepository`. It applies visibility once
+— `search()` and `records()` return only foods that may actually be recommended —
+so that six callers cannot disagree about whether a pending row is eligible. Callers
+that genuinely need everything, such as the duplicate check, pass
+`include_unverified=True` and say so at the call site. `FoodDB` remains underneath
+as the in-memory index and the fuzzy matcher; the repository wraps it rather than
+hiding it, because Stage 4 matches with that scorer and Stage 3 ranks with BM25, and
+those are deliberately different algorithms (see section 5).
+
+### Determinism
+
+`make data` is reproducible: two runs produce identical content across all six
+tables. Migrated rows carry a fixed `created_at`/`updated_at` constant rather than
+wall-clock time. The only value that differs between two builds is
+`build_info.built_at`, which records when the build ran rather than what it
+produced.

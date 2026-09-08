@@ -387,8 +387,14 @@ class FoodDB:
             raise FoodDatabaseMissingError(path)
         if path.suffix == ".parquet":
             return pd.read_parquet(path)
-        with sqlite3.connect(path) as conn:
+        # Closed explicitly. `with sqlite3.connect(...)` commits on exit but does
+        # not close, so the pattern leaks a handle for the life of the process --
+        # which on Windows is enough to stop `make data` from replacing the file.
+        conn = sqlite3.connect(path)
+        try:
             return pd.read_sql("SELECT * FROM foods", conn)
+        finally:
+            conn.close()
 
     @staticmethod
     def _to_records(frame: pd.DataFrame) -> list[FoodRecord]:
